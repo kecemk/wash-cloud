@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import LieferscheinStatistik from "../components/LieferscheinStatistik";
 import SammelscheinKarte from "../components/SammelscheinKarte";
@@ -49,6 +50,11 @@ function lieferscheinNummerFormatieren(
 }
 
 export default function KassePage() {
+  const searchParams = useSearchParams();
+
+  const ausgewaehlteAnnahmestelle =
+    searchParams.get("name")?.trim() || "AnnahmeL1";
+
   const [nummer, setNummer] = useState("");
   const [menge, setMenge] = useState("");
   const [artikel, setArtikel] = useState("Hemd");
@@ -386,7 +392,7 @@ export default function KassePage() {
       naechsteLieferscheinNummerErmitteln();
 
     const bestaetigt = window.confirm(
-      `Möchtest du den Lieferschein ${neueLieferscheinNummer} wirklich fertigstellen? Danach wird ein neuer leerer Lieferschein begonnen.`,
+      `Möchtest du den Lieferschein ${neueLieferscheinNummer} für ${ausgewaehlteAnnahmestelle} wirklich fertigstellen? Danach wird ein neuer leerer Lieferschein begonnen.`,
     );
 
     if (!bestaetigt) {
@@ -398,7 +404,7 @@ export default function KassePage() {
       nummer: neueLieferscheinNummer,
       status: "Fertig",
       fertiggestelltAm: new Date().toISOString(),
-      annahmestelle: "AnnahmeL1",
+      annahmestelle: ausgewaehlteAnnahmestelle,
       sammelscheine: [...sammelscheine],
     };
 
@@ -411,7 +417,7 @@ export default function KassePage() {
     formularLeeren();
 
     setErfolgsmeldung(
-      `Der Lieferschein ${neueLieferscheinNummer} wurde fertiggestellt und lokal gespeichert.`,
+      `Der Lieferschein ${neueLieferscheinNummer} für ${ausgewaehlteAnnahmestelle} wurde fertiggestellt und lokal gespeichert.`,
     );
 
     window.scrollTo({
@@ -468,16 +474,26 @@ export default function KassePage() {
             </h1>
 
             <p className="mt-1 text-sm text-slate-300">
-              Neuer Lieferschein für AnnahmeL1
+              Neuer Lieferschein für{" "}
+              {ausgewaehlteAnnahmestelle}
             </p>
           </div>
 
-          <Link
-            href="/lieferscheine"
-            className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-950"
-          >
-            Fertige Lieferscheine
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/annahmestelle"
+              className="rounded-xl border border-slate-600 px-5 py-3 text-sm font-bold text-white"
+            >
+              Annahmestelle wechseln
+            </Link>
+
+            <Link
+              href="/lieferscheine"
+              className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-950"
+            >
+              Fertige Lieferscheine
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -491,11 +507,11 @@ export default function KassePage() {
         <div className="mb-6 grid gap-4 rounded-xl bg-white p-4 shadow md:grid-cols-3">
           <div>
             <p className="text-sm text-slate-600">
-              Status des aktuellen Lieferscheins
+              Ausgewählte Annahmestelle
             </p>
 
-            <p className="mt-1 font-bold text-orange-600">
-              Entwurf
+            <p className="mt-1 font-bold text-blue-700">
+              {ausgewaehlteAnnahmestelle}
             </p>
           </div>
 
@@ -676,6 +692,13 @@ export default function KassePage() {
                 <h2 className="text-xl font-bold text-slate-900">
                   Aktueller Lieferschein
                 </h2>
+
+                <p className="mt-1 text-sm text-slate-600">
+                  Annahmestelle:{" "}
+                  <span className="font-bold text-slate-900">
+                    {ausgewaehlteAnnahmestelle}
+                  </span>
+                </p>
 
                 <p className="mt-1 text-sm text-slate-600">
                   Nummer nach Fertigstellung:{" "}
