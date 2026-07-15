@@ -5,28 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import LieferscheinStatistik from "../components/LieferscheinStatistik";
 import SammelscheinKarte from "../components/SammelscheinKarte";
-
-type ArtikelPosition = {
-  id: number;
-  menge: number;
-  artikel: string;
-};
-
-type Sammelschein = {
-  id: number;
-  nummer: string;
-  positionen: ArtikelPosition[];
-  preis: number;
-};
-
-type FertigerLieferschein = {
-  id: number;
-  nummer: string;
-  status: "Fertig";
-  fertiggestelltAm: string;
-  annahmestelle: string;
-  sammelscheine: Sammelschein[];
-};
+import { supabase } from "../lib/supabase";
+import type {
+  ArtikelPosition,
+  FertigerLieferschein,
+  Sammelschein,
+} from "./types";
 
 const artikelMehrzahl: Record<string, string> = {
   Hemd: "Hemden",
@@ -37,49 +21,46 @@ const artikelMehrzahl: Record<string, string> = {
   Kleid: "Kleider",
 };
 
-const ENTWURF_SPEICHER_NAME =
-  "wash-cloud-lieferschein-entwurf";
-
+const ENTWURF_SPEICHER_NAME = "wash-cloud-lieferschein-entwurf";
 const FERTIGE_LIEFERSCHEINE_SPEICHER_NAME =
   "wash-cloud-fertige-lieferscheine";
 
-function lieferscheinNummerFormatieren(
-  laufendeNummer: number,
-) {
+function lieferscheinNummerFormatieren(laufendeNummer: number) {
   return `LS-${String(laufendeNummer).padStart(6, "0")}`;
+}
+
+function nummerAusLieferscheinNummer(lieferscheinNummer: string) {
+  const nummerAlsZahl = Number(lieferscheinNummer.replace("LS-", ""));
+  return Number.isInteger(nummerAlsZahl) ? nummerAlsZahl : 0;
 }
 
 export default function KassePage() {
   const searchParams = useSearchParams();
 
   const ausgewaehlteAnnahmestelle =
-    searchParams.get("name")?.trim() || "AnnahmeL1";
+    searchParams.get("name")?.trim() || "Unbekannte Annahmestelle";
+
+  const ausgewaehlteAnnahmestelleId = Number(
+    searchParams.get("annahmestelle"),
+  );
 
   const [nummer, setNummer] = useState("");
   const [menge, setMenge] = useState("");
   const [artikel, setArtikel] = useState("Hemd");
   const [preis, setPreis] = useState("");
-
-  const [positionen, setPositionen] =
-    useState<ArtikelPosition[]>([]);
-
-  const [sammelscheine, setSammelscheine] =
-    useState<Sammelschein[]>([]);
-
+  const [positionen, setPositionen] = useState<ArtikelPosition[]>([]);
+  const [sammelscheine, setSammelscheine] = useState<Sammelschein[]>([]);
   const [fertigeLieferscheine, setFertigeLieferscheine] =
     useState<FertigerLieferschein[]>([]);
-
-  const [bearbeiteteId, setBearbeiteteId] =
-    useState<number | null>(null);
-
+  const [bearbeiteteId, setBearbeiteteId] = useState<number | null>(null);
   const [datenGeladen, setDatenGeladen] = useState(false);
   const [erfolgsmeldung, setErfolgsmeldung] = useState("");
+  const [supabaseFehler, setSupabaseFehler] = useState("");
+  const [speichert, setSpeichert] = useState(false);
 
   useEffect(() => {
     try {
-      const gespeicherterEntwurf = localStorage.getItem(
-        ENTWURF_SPEICHER_NAME,
-      );
+      const gespeicherterEntwurf = localStorage.getItem(ENTWURF_SPEICHER_NAME);
 
       if (gespeicherterEntwurf) {
         const gespeicherteSammelscheine = JSON.parse(
@@ -91,10 +72,9 @@ export default function KassePage() {
         }
       }
 
-      const gespeicherteFertigeLieferscheine =
-        localStorage.getItem(
-          FERTIGE_LIEFERSCHEINE_SPEICHER_NAME,
-        );
+      const gespeicherteFertigeLieferscheine = localStorage.getItem(
+        FERTIGE_LIEFERSCHEINE_SPEICHER_NAME,
+      );
 
       if (gespeicherteFertigeLieferscheine) {
         const geladeneDaten = JSON.parse(
@@ -102,42 +82,30 @@ export default function KassePage() {
         ) as Partial<FertigerLieferschein>[];
 
         if (Array.isArray(geladeneDaten)) {
-          const nummerierteLieferscheine = geladeneDaten.map(
-            (lieferschein, index) => ({
+          setFertigeLieferscheine(
+            geladeneDaten.map((lieferschein, index) => ({
               id: lieferschein.id ?? Date.now() + index,
               nummer:
-                lieferschein.nummer ??
-                lieferscheinNummerFormatieren(index + 1),
+                lieferschein.nummer ?? lieferscheinNummerFormatieren(index + 1),
               status: "Fertig" as const,
               fertiggestelltAm:
-                lieferschein.fertiggestelltAm ??
-                new Date().toISOString(),
+                lieferschein.fertiggestelltAm ?? new Date().toISOString(),
               annahmestelle:
-                lieferschein.annahmestelle ?? "AnnahmeL1",
-              sammelscheine:
-                lieferschein.sammelscheine ?? [],
-            }),
-          );
-
-          setFertigeLieferscheine(
-            nummerierteLieferscheine,
+                lieferschein.annahmestelle ?? "Unbekannte Annahmestelle",
+              sammelscheine: lieferschein.sammelscheine ?? [],
+            })),
           );
         }
       }
     } catch (fehler) {
-      console.error(
-        "Die lokalen Daten konnten nicht geladen werden:",
-        fehler,
-      );
+      console.error("Die lokalen Daten konnten nicht geladen werden:", fehler);
     } finally {
       setDatenGeladen(true);
     }
   }, []);
 
   useEffect(() => {
-    if (!datenGeladen) {
-      return;
-    }
+    if (!datenGeladen) return;
 
     try {
       localStorage.setItem(
@@ -145,17 +113,12 @@ export default function KassePage() {
         JSON.stringify(sammelscheine),
       );
     } catch (fehler) {
-      console.error(
-        "Der lokale Entwurf konnte nicht gespeichert werden:",
-        fehler,
-      );
+      console.error("Der lokale Entwurf konnte nicht gespeichert werden:", fehler);
     }
   }, [sammelscheine, datenGeladen]);
 
   useEffect(() => {
-    if (!datenGeladen) {
-      return;
-    }
+    if (!datenGeladen) return;
 
     try {
       localStorage.setItem(
@@ -164,36 +127,52 @@ export default function KassePage() {
       );
     } catch (fehler) {
       console.error(
-        "Die fertigen Lieferscheine konnten nicht gespeichert werden:",
+        "Die fertigen Lieferscheine konnten nicht lokal gespeichert werden:",
         fehler,
       );
     }
   }, [fertigeLieferscheine, datenGeladen]);
 
-  function naechsteLieferscheinNummerErmitteln() {
+  function naechsteLokaleLieferscheinNummerErmitteln() {
     const hoechsteNummer = fertigeLieferscheine.reduce(
-      (hoechsterWert, lieferschein) => {
-        const nummerAlsText = lieferschein.nummer.replace(
-          "LS-",
-          "",
-        );
+      (hoechsterWert, lieferschein) =>
+        Math.max(
+          hoechsterWert,
+          nummerAusLieferscheinNummer(lieferschein.nummer),
+        ),
+      0,
+    );
 
-        const nummerAlsZahl = Number(nummerAlsText);
+    return lieferscheinNummerFormatieren(hoechsteNummer + 1);
+  }
 
-        if (
-          Number.isInteger(nummerAlsZahl) &&
-          nummerAlsZahl > hoechsterWert
-        ) {
-          return nummerAlsZahl;
-        }
+  async function naechsteCloudLieferscheinNummerErmitteln() {
+    const db = supabase as any;
 
-        return hoechsterWert;
-      },
+    const { data, error } = await db
+      .from("lieferscheine")
+      .select("nummer")
+      .order("nummer", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+
+    const hoechsteCloudNummer = data?.nummer
+      ? nummerAusLieferscheinNummer(data.nummer)
+      : 0;
+
+    const hoechsteLokaleNummer = fertigeLieferscheine.reduce(
+      (hoechsterWert, lieferschein) =>
+        Math.max(
+          hoechsterWert,
+          nummerAusLieferscheinNummer(lieferschein.nummer),
+        ),
       0,
     );
 
     return lieferscheinNummerFormatieren(
-      hoechsteNummer + 1,
+      Math.max(hoechsteCloudNummer, hoechsteLokaleNummer) + 1,
     );
   }
 
@@ -205,22 +184,20 @@ export default function KassePage() {
       return;
     }
 
-    const neuePosition: ArtikelPosition = {
-      id: Date.now(),
-      menge: mengeAlsZahl,
-      artikel,
-    };
+    setPositionen((aktuellePositionen) => [
+      ...aktuellePositionen,
+      { id: Date.now(), menge: mengeAlsZahl, artikel },
+    ]);
 
-    setPositionen([...positionen, neuePosition]);
     setMenge("");
     setErfolgsmeldung("");
+    setSupabaseFehler("");
   }
 
   function artikelPositionLoeschen(id: number) {
-    setPositionen(
-      positionen.filter((position) => position.id !== id),
+    setPositionen((aktuellePositionen) =>
+      aktuellePositionen.filter((position) => position.id !== id),
     );
-
     setErfolgsmeldung("");
   }
 
@@ -228,24 +205,17 @@ export default function KassePage() {
     sammelscheinNummer: string,
     ausgenommeneId: number | null,
   ) {
-    const nummerImAktuellenEntwurfVorhanden =
+    return (
       sammelscheine.some(
         (sammelschein) =>
           sammelschein.nummer === sammelscheinNummer &&
           sammelschein.id !== ausgenommeneId,
-      );
-
-    const nummerInFertigemLieferscheinVorhanden =
+      ) ||
       fertigeLieferscheine.some((lieferschein) =>
         lieferschein.sammelscheine.some(
-          (sammelschein) =>
-            sammelschein.nummer === sammelscheinNummer,
+          (sammelschein) => sammelschein.nummer === sammelscheinNummer,
         ),
-      );
-
-    return (
-      nummerImAktuellenEntwurfVorhanden ||
-      nummerInFertigemLieferscheinVorhanden
+      )
     );
   }
 
@@ -260,28 +230,17 @@ export default function KassePage() {
 
   function sammelscheinSpeichern() {
     const bereinigteNummer = nummer.trim();
-
-    const bereinigterPreisText = preis
-      .replace("€", "")
-      .replace(",", ".")
-      .trim();
-
-    const preisAlsZahl = Number(bereinigterPreisText);
+    const preisAlsZahl = Number(
+      preis.replace("€", "").replace(",", ".").trim(),
+    );
 
     if (bereinigteNummer === "") {
       alert("Bitte eine Sammelschein-Nummer eingeben.");
       return;
     }
 
-    if (
-      sammelscheinNummerExistiert(
-        bereinigteNummer,
-        bearbeiteteId,
-      )
-    ) {
-      alert(
-        "Diese Sammelschein-Nummer wurde bereits verwendet.",
-      );
+    if (sammelscheinNummerExistiert(bereinigteNummer, bearbeiteteId)) {
+      alert("Diese Sammelschein-Nummer wurde bereits verwendet.");
       return;
     }
 
@@ -296,55 +255,45 @@ export default function KassePage() {
     }
 
     if (bearbeiteteId !== null) {
-      setSammelscheine(
-        sammelscheine.map((sammelschein) => {
-          if (sammelschein.id === bearbeiteteId) {
-            return {
-              ...sammelschein,
-              nummer: bereinigteNummer,
-              positionen: [...positionen],
-              preis: preisAlsZahl,
-            };
-          }
-
-          return sammelschein;
-        }),
+      setSammelscheine((aktuelleSammelscheine) =>
+        aktuelleSammelscheine.map((sammelschein) =>
+          sammelschein.id === bearbeiteteId
+            ? {
+                ...sammelschein,
+                nummer: bereinigteNummer,
+                positionen: [...positionen],
+                preis: preisAlsZahl,
+              }
+            : sammelschein,
+        ),
       );
     } else {
-      const neuerSammelschein: Sammelschein = {
-        id: Date.now(),
-        nummer: bereinigteNummer,
-        positionen: [...positionen],
-        preis: preisAlsZahl,
-      };
-
-      setSammelscheine([
-        ...sammelscheine,
-        neuerSammelschein,
+      setSammelscheine((aktuelleSammelscheine) => [
+        ...aktuelleSammelscheine,
+        {
+          id: Date.now(),
+          nummer: bereinigteNummer,
+          positionen: [...positionen],
+          preis: preisAlsZahl,
+        },
       ]);
     }
 
     formularLeeren();
     setErfolgsmeldung("");
+    setSupabaseFehler("");
   }
 
-  function sammelscheinBearbeiten(
-    sammelschein: Sammelschein,
-  ) {
+  function sammelscheinBearbeiten(sammelschein: Sammelschein) {
     setBearbeiteteId(sammelschein.id);
     setNummer(sammelschein.nummer);
-    setPreis(
-      sammelschein.preis.toFixed(2).replace(".", ","),
-    );
+    setPreis(sammelschein.preis.toFixed(2).replace(".", ","));
     setPositionen([...sammelschein.positionen]);
     setMenge("");
     setArtikel("Hemd");
     setErfolgsmeldung("");
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
+    setSupabaseFehler("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function bearbeitungAbbrechen() {
@@ -352,112 +301,178 @@ export default function KassePage() {
   }
 
   function sammelscheinLoeschen(id: number) {
-    const bestaetigt = window.confirm(
-      "Möchtest du diesen Sammelschein wirklich löschen?",
-    );
-
-    if (!bestaetigt) {
+    if (!window.confirm("Möchtest du diesen Sammelschein wirklich löschen?")) {
       return;
     }
 
-    setSammelscheine(
-      sammelscheine.filter(
-        (sammelschein) => sammelschein.id !== id,
-      ),
+    setSammelscheine((aktuelleSammelscheine) =>
+      aktuelleSammelscheine.filter((sammelschein) => sammelschein.id !== id),
     );
 
-    if (bearbeiteteId === id) {
-      formularLeeren();
-    }
-
+    if (bearbeiteteId === id) formularLeeren();
     setErfolgsmeldung("");
   }
 
-  function lieferscheinFertigstellen() {
-    if (sammelscheine.length === 0) {
-      alert(
-        "Der Lieferschein enthält noch keine Sammelscheine.",
-      );
-      return;
-    }
-
-    if (bearbeiteteId !== null) {
-      alert(
-        "Bitte speichere oder beende zuerst die Bearbeitung.",
-      );
-      return;
-    }
-
-    const neueLieferscheinNummer =
-      naechsteLieferscheinNummerErmitteln();
-
-    const bestaetigt = window.confirm(
-      `Möchtest du den Lieferschein ${neueLieferscheinNummer} für ${ausgewaehlteAnnahmestelle} wirklich fertigstellen? Danach wird ein neuer leerer Lieferschein begonnen.`,
-    );
-
-    if (!bestaetigt) {
-      return;
-    }
-
-    const fertigerLieferschein: FertigerLieferschein = {
-      id: Date.now(),
-      nummer: neueLieferscheinNummer,
-      status: "Fertig",
-      fertiggestelltAm: new Date().toISOString(),
-      annahmestelle: ausgewaehlteAnnahmestelle,
-      sammelscheine: [...sammelscheine],
-    };
-
-    setFertigeLieferscheine([
-      ...fertigeLieferscheine,
-      fertigerLieferschein,
-    ]);
-
-    setSammelscheine([]);
-    formularLeeren();
-
-    setErfolgsmeldung(
-      `Der Lieferschein ${neueLieferscheinNummer} für ${ausgewaehlteAnnahmestelle} wurde fertiggestellt und lokal gespeichert.`,
-    );
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  }
-
   const gesamtTeile = sammelscheine.reduce(
-    (summe, sammelschein) => {
-      const teileDesSammelscheins =
-        sammelschein.positionen.reduce(
-          (positionsSumme, position) =>
-            positionsSumme + position.menge,
-          0,
-        );
-
-      return summe + teileDesSammelscheins;
-    },
+    (summe, sammelschein) =>
+      summe +
+      sammelschein.positionen.reduce(
+        (positionsSumme, position) => positionsSumme + position.menge,
+        0,
+      ),
     0,
   );
 
   const gesamtBetrag = sammelscheine.reduce(
-    (summe, sammelschein) =>
-      summe + sammelschein.preis,
+    (summe, sammelschein) => summe + sammelschein.preis,
     0,
   );
 
-  const naechsteLieferscheinNummer =
-    naechsteLieferscheinNummerErmitteln();
+  async function lieferscheinFertigstellen() {
+    if (speichert) return;
 
-  function artikelText(position: ArtikelPosition) {
-    if (position.menge === 1) {
-      return position.artikel;
+    if (sammelscheine.length === 0) {
+      alert("Der Lieferschein enthält noch keine Sammelscheine.");
+      return;
     }
 
-    return (
-      artikelMehrzahl[position.artikel] ??
-      position.artikel
-    );
+    if (bearbeiteteId !== null) {
+      alert("Bitte speichere oder beende zuerst die Bearbeitung.");
+      return;
+    }
+
+    if (
+      !Number.isInteger(ausgewaehlteAnnahmestelleId) ||
+      ausgewaehlteAnnahmestelleId < 1
+    ) {
+      setSupabaseFehler(
+        "Die Annahmestellen-ID fehlt. Bitte öffne die Kasse erneut über eine Annahmestelle.",
+      );
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Möchtest du den Lieferschein für ${ausgewaehlteAnnahmestelle} wirklich fertigstellen?`,
+      )
+    ) {
+      return;
+    }
+
+    setSpeichert(true);
+    setSupabaseFehler("");
+    setErfolgsmeldung("");
+
+    const db = supabase as any;
+    let gespeicherterLieferscheinId: number | null = null;
+
+    try {
+      const neueLieferscheinNummer =
+        await naechsteCloudLieferscheinNummerErmitteln();
+      const fertiggestelltAm = new Date().toISOString();
+
+      const { data: gespeicherterLieferschein, error: lieferscheinFehler } =
+        await db
+          .from("lieferscheine")
+          .insert({
+            nummer: neueLieferscheinNummer,
+            annahmestelle_id: ausgewaehlteAnnahmestelleId,
+            status: "fertig",
+            gesamtbetrag: gesamtBetrag,
+            gesamtteile: gesamtTeile,
+            fertiggestellt_am: fertiggestelltAm,
+          })
+          .select("id")
+          .single();
+
+      if (lieferscheinFehler || !gespeicherterLieferschein) {
+        throw new Error(
+          lieferscheinFehler?.message ??
+            "Der Lieferschein konnte nicht gespeichert werden.",
+        );
+      }
+
+      gespeicherterLieferscheinId = gespeicherterLieferschein.id;
+
+      for (const sammelschein of sammelscheine) {
+        const {
+          data: gespeicherterSammelschein,
+          error: sammelscheinFehler,
+        } = await db
+          .from("sammelscheine")
+          .insert({
+            lieferschein_id: gespeicherterLieferscheinId,
+            nummer: sammelschein.nummer,
+            preis: sammelschein.preis,
+          })
+          .select("id")
+          .single();
+
+        if (sammelscheinFehler || !gespeicherterSammelschein) {
+          throw new Error(
+            sammelscheinFehler?.message ??
+              `Der Sammelschein ${sammelschein.nummer} konnte nicht gespeichert werden.`,
+          );
+        }
+
+        const { error: positionenFehler } = await db
+          .from("sammelschein_positionen")
+          .insert(
+            sammelschein.positionen.map((position) => ({
+              sammelschein_id: gespeicherterSammelschein.id,
+              artikel: position.artikel,
+              menge: position.menge,
+            })),
+          );
+
+        if (positionenFehler) throw new Error(positionenFehler.message);
+      }
+
+      const fertigerLieferschein: FertigerLieferschein = {
+        id: gespeicherterLieferscheinId!,
+        nummer: neueLieferscheinNummer,
+        status: "Fertig",
+        fertiggestelltAm,
+        annahmestelle: ausgewaehlteAnnahmestelle,
+        sammelscheine: [...sammelscheine],
+      };
+
+      setFertigeLieferscheine((aktuelleLieferscheine) => [
+        ...aktuelleLieferscheine,
+        fertigerLieferschein,
+      ]);
+      setSammelscheine([]);
+      formularLeeren();
+      setErfolgsmeldung(
+        `Der Lieferschein ${neueLieferscheinNummer} wurde erfolgreich in Supabase gespeichert.`,
+      );
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (fehler) {
+      console.error("Fehler beim Speichern:", fehler);
+
+      if (gespeicherterLieferscheinId !== null) {
+        await db
+          .from("lieferscheine")
+          .delete()
+          .eq("id", gespeicherterLieferscheinId);
+      }
+
+      setSupabaseFehler(
+        fehler instanceof Error
+          ? fehler.message
+          : "Der Lieferschein konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setSpeichert(false);
+    }
+  }
+
+  const naechsteLieferscheinNummer =
+    naechsteLokaleLieferscheinNummerErmitteln();
+
+  function artikelText(position: ArtikelPosition) {
+    if (position.menge === 1) return position.artikel;
+    return artikelMehrzahl[position.artikel] ?? position.artikel;
   }
 
   return (
@@ -465,17 +480,10 @@ export default function KassePage() {
       <header className="bg-slate-950 px-6 py-5 text-white">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-sm text-slate-300">
-              Wash Cloud
-            </p>
-
-            <h1 className="text-2xl font-bold">
-              Kasse
-            </h1>
-
+            <p className="text-sm text-slate-300">Wash Cloud</p>
+            <h1 className="text-2xl font-bold">Kasse</h1>
             <p className="mt-1 text-sm text-slate-300">
-              Neuer Lieferschein für{" "}
-              {ausgewaehlteAnnahmestelle}
+              Neuer Lieferschein für {ausgewaehlteAnnahmestelle}
             </p>
           </div>
 
@@ -486,7 +494,6 @@ export default function KassePage() {
             >
               Annahmestelle wechseln
             </Link>
-
             <Link
               href="/lieferscheine"
               className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-950"
@@ -504,32 +511,32 @@ export default function KassePage() {
           </div>
         )}
 
+        {supabaseFehler && (
+          <div className="mb-6 rounded-xl bg-red-100 p-4 text-sm font-semibold text-red-800">
+            <p className="font-bold">Speichern fehlgeschlagen</p>
+            <p className="mt-1">{supabaseFehler}</p>
+          </div>
+        )}
+
         <div className="mb-6 grid gap-4 rounded-xl bg-white p-4 shadow md:grid-cols-3">
           <div>
-            <p className="text-sm text-slate-600">
-              Ausgewählte Annahmestelle
-            </p>
-
+            <p className="text-sm text-slate-600">Ausgewählte Annahmestelle</p>
             <p className="mt-1 font-bold text-blue-700">
               {ausgewaehlteAnnahmestelle}
             </p>
           </div>
-
           <div>
             <p className="text-sm text-slate-600">
-              Nächste Lieferschein-Nummer
+              Voraussichtliche nächste Nummer
             </p>
-
             <p className="mt-1 text-xl font-bold text-slate-900">
               {naechsteLieferscheinNummer}
             </p>
           </div>
-
           <div className="md:text-right">
             <p className="text-sm text-slate-600">
-              Lokal fertiggestellt
+              In diesem Browser fertiggestellt
             </p>
-
             <p className="mt-1 text-xl font-bold text-slate-900">
               {fertigeLieferscheine.length}
             </p>
@@ -545,8 +552,7 @@ export default function KassePage() {
 
           {bearbeiteteId !== null && (
             <div className="mt-4 rounded-xl bg-yellow-50 p-4 text-sm text-yellow-800">
-              Du bearbeitest gerade einen vorhandenen
-              Sammelschein.
+              Du bearbeitest gerade einen vorhandenen Sammelschein.
             </div>
           )}
 
@@ -555,45 +561,32 @@ export default function KassePage() {
               <span className="text-sm font-medium text-slate-700">
                 Sammelschein-Nummer
               </span>
-
               <input
                 type="text"
                 value={nummer}
-                onChange={(event) =>
-                  setNummer(event.target.value)
-                }
+                onChange={(event) => setNummer(event.target.value)}
                 placeholder="z. B. 6080"
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
               />
             </label>
 
             <label className="block">
-              <span className="text-sm font-medium text-slate-700">
-                Menge
-              </span>
-
+              <span className="text-sm font-medium text-slate-700">Menge</span>
               <input
                 type="number"
                 min="1"
                 value={menge}
-                onChange={(event) =>
-                  setMenge(event.target.value)
-                }
+                onChange={(event) => setMenge(event.target.value)}
                 placeholder="z. B. 10"
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
               />
             </label>
 
             <label className="block">
-              <span className="text-sm font-medium text-slate-700">
-                Artikel
-              </span>
-
+              <span className="text-sm font-medium text-slate-700">Artikel</span>
               <select
                 value={artikel}
-                onChange={(event) =>
-                  setArtikel(event.target.value)
-                }
+                onChange={(event) => setArtikel(event.target.value)}
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
               >
                 <option value="Hemd">Hemd</option>
@@ -619,7 +612,6 @@ export default function KassePage() {
               <h3 className="font-bold text-slate-900">
                 Inhalt des Sammelscheins
               </h3>
-
               <div className="mt-3 space-y-2">
                 {positionen.map((position) => (
                   <div
@@ -627,17 +619,11 @@ export default function KassePage() {
                     className="flex items-center justify-between rounded-lg bg-white px-4 py-3 text-slate-900"
                   >
                     <span>
-                      {position.menge}{" "}
-                      {artikelText(position)}
+                      {position.menge} {artikelText(position)}
                     </span>
-
                     <button
                       type="button"
-                      onClick={() =>
-                        artikelPositionLoeschen(
-                          position.id,
-                        )
-                      }
+                      onClick={() => artikelPositionLoeschen(position.id)}
                       className="text-sm font-semibold text-red-600"
                     >
                       Entfernen
@@ -652,13 +638,10 @@ export default function KassePage() {
             <span className="text-sm font-medium text-slate-700">
               Gesamtpreis dieser Nummer
             </span>
-
             <input
               type="text"
               value={preis}
-              onChange={(event) =>
-                setPreis(event.target.value)
-              }
+              onChange={(event) => setPreis(event.target.value)}
               placeholder="z. B. 38,00"
               className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
             />
@@ -692,22 +675,19 @@ export default function KassePage() {
                 <h2 className="text-xl font-bold text-slate-900">
                   Aktueller Lieferschein
                 </h2>
-
                 <p className="mt-1 text-sm text-slate-600">
-                  Annahmestelle:{" "}
+                  Annahmestelle: {" "}
                   <span className="font-bold text-slate-900">
                     {ausgewaehlteAnnahmestelle}
                   </span>
                 </p>
-
                 <p className="mt-1 text-sm text-slate-600">
-                  Nummer nach Fertigstellung:{" "}
+                  Voraussichtliche Nummer: {" "}
                   <span className="font-bold text-slate-900">
                     {naechsteLieferscheinNummer}
                   </span>
                 </p>
               </div>
-
               <span className="rounded-full bg-orange-100 px-3 py-1 text-sm font-semibold text-orange-700">
                 Entwurf
               </span>
@@ -726,9 +706,7 @@ export default function KassePage() {
 
             <div className="mt-6">
               <LieferscheinStatistik
-                anzahlSammelscheine={
-                  sammelscheine.length
-                }
+                anzahlSammelscheine={sammelscheine.length}
                 gesamtTeile={gesamtTeile}
                 gesamtBetrag={gesamtBetrag}
               />
@@ -737,10 +715,12 @@ export default function KassePage() {
             <button
               type="button"
               onClick={lieferscheinFertigstellen}
-              className="mt-6 w-full rounded-xl bg-slate-950 px-5 py-4 text-lg font-bold text-white"
+              disabled={speichert}
+              className="mt-6 w-full rounded-xl bg-slate-950 px-5 py-4 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Lieferschein{" "}
-              {naechsteLieferscheinNummer} fertigstellen
+              {speichert
+                ? "Lieferschein wird gespeichert ..."
+                : `Lieferschein ${naechsteLieferscheinNummer} fertigstellen`}
             </button>
           </div>
         )}
