@@ -342,7 +342,7 @@ export default function LieferscheinePage() {
 
           {darfKasseAnzeigen && (
             <Link
-              href="/annahmestelle"
+              href="/annahmestellen"
               className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-950"
             >
               Neue Kasse öffnen
@@ -393,7 +393,7 @@ export default function LieferscheinePage() {
 
               {darfKasseAnzeigen && (
                 <Link
-                  href="/annahmestelle"
+                  href="/annahmestellen"
                   className="mt-6 inline-block rounded-xl bg-slate-950 px-5 py-3 font-bold text-white"
                 >
                   Ersten Lieferschein erstellen
