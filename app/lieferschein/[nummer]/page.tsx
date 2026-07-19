@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import DruckButton from "../../components/DruckButton";
+import ZugriffsSchutz from "../../components/ZugriffsSchutz";
+import { useBenutzer } from "../../context/BenutzerContext";
 import LieferscheinStatistik from "../../components/LieferscheinStatistik";
 import { supabase } from "../../lib/supabase";
 import type {
@@ -32,6 +34,7 @@ type DatenbankAnnahmestelle = {
 
 type DatenbankLieferschein = {
   id: number;
+  annahmestelle_id: number | null;
   nummer: string;
   status: string;
   erstellt_am: string;
@@ -116,6 +119,10 @@ function lieferscheinUmwandeln(
 }
 
 export default function LieferscheinDetailPage() {
+  const {
+    aktuellerBenutzer,
+  } = useBenutzer();
+
   const params = useParams<{ nummer: string }>();
 
   const [lieferschein, setLieferschein] =
@@ -138,17 +145,11 @@ export default function LieferscheinDetailPage() {
           params.nummer,
         );
 
-        /*
-          Vorübergehend verwenden wir hier "any".
-          Später erzeugen wir gemeinsame Supabase-
-          Datenbanktypen für das gesamte Projekt.
-        */
-        const db = supabase as any;
-
-        const { data, error } = await db
+        const { data, error } = await supabase
           .from("lieferscheine")
           .select(`
             id,
+            annahmestelle_id,
             nummer,
             status,
             gesamtbetrag,
@@ -192,9 +193,45 @@ export default function LieferscheinDetailPage() {
           return;
         }
 
+        const datenbankLieferschein =
+          data as DatenbankLieferschein;
+
+        if (
+          aktuellerBenutzer?.rolle ===
+          "annahmestelle"
+        ) {
+          const annahmestellenId =
+            aktuellerBenutzer.annahmestelleId;
+
+          const status =
+            datenbankLieferschein.status
+              .trim()
+              .toLowerCase();
+
+          const istAbgeschlossen =
+            status === "fertig" ||
+            status === "geliefert";
+
+          const istEigeneAnnahmestelle =
+            annahmestellenId !== null &&
+            datenbankLieferschein.annahmestelle_id ===
+              annahmestellenId;
+
+          if (
+            !istEigeneAnnahmestelle ||
+            !istAbgeschlossen
+          ) {
+            setLieferschein(null);
+            setFehler(
+              "Dieser Lieferschein ist für die aktuelle Annahmestelle nicht freigegeben.",
+            );
+            return;
+          }
+        }
+
         const geladenerLieferschein =
           lieferscheinUmwandeln(
-            data as DatenbankLieferschein,
+            datenbankLieferschein,
           );
 
         setLieferschein(geladenerLieferschein);
@@ -227,7 +264,7 @@ export default function LieferscheinDetailPage() {
     return () => {
       istAktiv = false;
     };
-  }, [params.nummer]);
+  }, [params.nummer, aktuellerBenutzer]);
 
   function artikelText(
     position: ArtikelPosition,
@@ -288,7 +325,14 @@ export default function LieferscheinDetailPage() {
     ) ?? 0;
 
   return (
-    <main className="min-h-screen bg-slate-50 print:bg-white">
+    <ZugriffsSchutz
+      berechtigung="lieferscheine_anzeigen"
+      titel="Lieferscheindetails gesperrt"
+      beschreibung="Der aktuell ausgewählte Benutzer darf keine Lieferscheindetails anzeigen."
+      zurueckLink="/lieferscheine"
+      zurueckText="Zur Lieferscheinübersicht"
+    >
+      <main className="min-h-screen bg-slate-50 print:bg-white">
       <header className="bg-slate-950 px-6 py-5 text-white print:hidden">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
           <div>
@@ -529,6 +573,7 @@ export default function LieferscheinDetailPage() {
           }
         }
       `}</style>
-    </main>
+      </main>
+    </ZugriffsSchutz>
   );
 }

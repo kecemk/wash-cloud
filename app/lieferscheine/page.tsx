@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import ZugriffsSchutz from "../components/ZugriffsSchutz";
+import { useBenutzer } from "../context/BenutzerContext";
 import { useEffect, useState } from "react";
 import LieferscheinStatistik from "../components/LieferscheinStatistik";
 import { supabase } from "../lib/supabase";
@@ -194,6 +196,16 @@ function statusFormatieren(status: string) {
 }
 
 export default function LieferscheinePage() {
+  const {
+    aktuellerBenutzer,
+    hatAktuellerBenutzerBerechtigung,
+  } = useBenutzer();
+
+  const darfKasseAnzeigen =
+    hatAktuellerBenutzerBerechtigung(
+      "kasse_anzeigen",
+    );
+
   const [lieferscheine, setLieferscheine] = useState<
     Lieferschein[]
   >([]);
@@ -208,11 +220,27 @@ export default function LieferscheinePage() {
       setLaedt(true);
       setFehler("");
 
-      // Vorübergehend "any", bis wir generierte
-      // Supabase-Datenbanktypen im Projekt verwenden.
-      const db = supabase as any;
+      if (!aktuellerBenutzer) {
+        setLieferscheine([]);
+        setLaedt(false);
+        return;
+      }
 
-      const { data, error } = await db
+      if (
+        aktuellerBenutzer.rolle ===
+          "annahmestelle" &&
+        aktuellerBenutzer.annahmestelleId ===
+          null
+      ) {
+        setLieferscheine([]);
+        setFehler(
+          "Diesem Benutzer ist keine Annahmestelle zugeordnet.",
+        );
+        setLaedt(false);
+        return;
+      }
+
+      let abfrage = supabase
         .from("lieferscheine")
         .select(`
           id,
@@ -235,7 +263,21 @@ export default function LieferscheinePage() {
               menge
             )
           )
-        `)
+        `);
+
+      if (
+        aktuellerBenutzer.rolle ===
+          "annahmestelle" &&
+        aktuellerBenutzer.annahmestelleId !==
+          null
+      ) {
+        abfrage = abfrage.eq(
+          "annahmestelle_id",
+          aktuellerBenutzer.annahmestelleId,
+        );
+      }
+
+      const { data, error } = await abfrage
         .order("fertiggestellt_am", {
           ascending: false,
           nullsFirst: false,
@@ -273,10 +315,15 @@ export default function LieferscheinePage() {
     return () => {
       istAktiv = false;
     };
-  }, []);
+  }, [aktuellerBenutzer]);
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <ZugriffsSchutz
+      berechtigung="lieferscheine_anzeigen"
+      titel="Lieferscheine gesperrt"
+      beschreibung="Der aktuell ausgewählte Benutzer darf keine Lieferscheine anzeigen."
+    >
+      <main className="min-h-screen bg-slate-50">
       <header className="bg-slate-950 px-6 py-5 text-white">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
           <div>
@@ -293,12 +340,14 @@ export default function LieferscheinePage() {
             </p>
           </div>
 
-          <Link
-            href="/annahmestelle"
-            className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-950"
-          >
-            Neue Kasse öffnen
-          </Link>
+          {darfKasseAnzeigen && (
+            <Link
+              href="/annahmestelle"
+              className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-950"
+            >
+              Neue Kasse öffnen
+            </Link>
+          )}
         </div>
       </header>
 
@@ -342,12 +391,14 @@ export default function LieferscheinePage() {
                 automatisch angezeigt.
               </p>
 
-              <Link
-                href="/annahmestelle"
-                className="mt-6 inline-block rounded-xl bg-slate-950 px-5 py-3 font-bold text-white"
-              >
-                Ersten Lieferschein erstellen
-              </Link>
+              {darfKasseAnzeigen && (
+                <Link
+                  href="/annahmestelle"
+                  className="mt-6 inline-block rounded-xl bg-slate-950 px-5 py-3 font-bold text-white"
+                >
+                  Ersten Lieferschein erstellen
+                </Link>
+              )}
             </div>
           )}
 
@@ -484,6 +535,7 @@ export default function LieferscheinePage() {
             </div>
           )}
       </section>
-    </main>
+      </main>
+    </ZugriffsSchutz>
   );
 }
