@@ -50,6 +50,17 @@ type DatenbankLieferschein = {
     | null;
 };
 
+type LieferscheinFoto = {
+  id: number;
+  sammelscheinPositionId: number;
+  dateipfad: string;
+  dateiname: string;
+  dateityp: string | null;
+  dateigroesse: number | null;
+  erstelltAm: string;
+  signierteUrl: string;
+};
+
 const artikelMehrzahl: Record<string, string> = {
   Hemd: "Hemden",
   Hose: "Hosen",
@@ -132,6 +143,17 @@ export default function LieferscheinDetailPage() {
     useState(false);
 
   const [fehler, setFehler] = useState("");
+
+  const [fotos, setFotos] =
+    useState<LieferscheinFoto[]>([]);
+
+  const [
+    fotoWirdGeloescht,
+    setFotoWirdGeloescht,
+  ] = useState<number | null>(null);
+
+  const [fotoFehler, setFotoFehler] =
+    useState("");
 
   useEffect(() => {
     let istAktiv = true;
@@ -235,6 +257,104 @@ export default function LieferscheinDetailPage() {
           );
 
         setLieferschein(geladenerLieferschein);
+
+        const {
+          data: fotoDaten,
+          error: fotoAbfrageFehler,
+        } = await supabase
+          .from("lieferschein_fotos")
+          .select(`
+            id,
+            sammelschein_position_id,
+            dateipfad,
+            dateiname,
+            dateityp,
+            dateigroesse,
+            erstellt_am
+          `)
+          .eq(
+            "lieferschein_id",
+            datenbankLieferschein.id,
+          )
+          .order("erstellt_am", {
+            ascending: true,
+          });
+
+        if (fotoAbfrageFehler) {
+          console.error(
+            "Die Lieferscheinfotos konnten nicht geladen werden:",
+            fotoAbfrageFehler,
+          );
+
+          setFotoFehler(
+            fotoAbfrageFehler.message,
+          );
+          setFotos([]);
+          return;
+        }
+
+        const geladeneFotos =
+          await Promise.all(
+            (fotoDaten ?? []).map(
+              async (foto) => {
+                const {
+                  data: signierteDaten,
+                  error:
+                    signaturFehler,
+                } = await supabase.storage
+                  .from(
+                    "lieferschein-fotos",
+                  )
+                  .createSignedUrl(
+                    String(
+                      foto.dateipfad,
+                    ),
+                    60 * 60,
+                  );
+
+                if (signaturFehler) {
+                  throw new Error(
+                    signaturFehler.message,
+                  );
+                }
+
+                return {
+                  id: Number(foto.id),
+                  sammelscheinPositionId:
+                    Number(
+                      foto.sammelschein_position_id,
+                    ),
+                  dateipfad: String(
+                    foto.dateipfad,
+                  ),
+                  dateiname: String(
+                    foto.dateiname,
+                  ),
+                  dateityp:
+                    foto.dateityp === null
+                      ? null
+                      : String(
+                          foto.dateityp,
+                        ),
+                  dateigroesse:
+                    foto.dateigroesse ===
+                    null
+                      ? null
+                      : Number(
+                          foto.dateigroesse,
+                        ),
+                  erstelltAm: String(
+                    foto.erstellt_am,
+                  ),
+                  signierteUrl:
+                    signierteDaten.signedUrl,
+                };
+              },
+            ),
+          );
+
+        setFotos(geladeneFotos);
+        setFotoFehler("");
       } catch (unbekannterFehler) {
         console.error(
           "Der Lieferschein konnte nicht geladen werden:",
@@ -300,6 +420,87 @@ export default function LieferscheinDetailPage() {
       hour: "2-digit",
       minute: "2-digit",
     });
+  }
+
+  function fotosFuerPosition(
+    positionsId: number,
+  ) {
+    return fotos.filter(
+      (foto) =>
+        foto.sammelscheinPositionId ===
+        positionsId,
+    );
+  }
+
+  async function fotoLoeschen(
+    foto: LieferscheinFoto,
+  ) {
+    if (
+      aktuellerBenutzer?.rolle !==
+      "admin"
+    ) {
+      return;
+    }
+
+    const bestaetigt =
+      window.confirm(
+        `Möchtest du das Foto „${foto.dateiname}“ wirklich löschen?`,
+      );
+
+    if (!bestaetigt) {
+      return;
+    }
+
+    setFotoWirdGeloescht(foto.id);
+    setFotoFehler("");
+
+    try {
+      const {
+        error: speicherFehler,
+      } = await supabase.storage
+        .from("lieferschein-fotos")
+        .remove([foto.dateipfad]);
+
+      if (speicherFehler) {
+        throw new Error(
+          speicherFehler.message,
+        );
+      }
+
+      const { error: datenbankFehler } =
+        await supabase
+          .from("lieferschein_fotos")
+          .delete()
+          .eq("id", foto.id);
+
+      if (datenbankFehler) {
+        throw new Error(
+          datenbankFehler.message,
+        );
+      }
+
+      setFotos(
+        (aktuelleFotos) =>
+          aktuelleFotos.filter(
+            (eintrag) =>
+              eintrag.id !== foto.id,
+          ),
+      );
+    } catch (unbekannterFehler) {
+      console.error(
+        "Das Foto konnte nicht gelöscht werden:",
+        unbekannterFehler,
+      );
+
+      setFotoFehler(
+        unbekannterFehler instanceof
+          Error
+          ? unbekannterFehler.message
+          : "Das Foto konnte nicht gelöscht werden.",
+      );
+    } finally {
+      setFotoWirdGeloescht(null);
+    }
   }
 
   const gesamtTeile =
@@ -395,6 +596,18 @@ export default function LieferscheinDetailPage() {
                 Zurück zur Liste
               </Link>
             </div>
+          </div>
+        )}
+
+        {fotoFehler && (
+          <div className="mb-6 rounded-2xl bg-yellow-100 p-5 text-yellow-900 shadow print:hidden">
+            <p className="font-bold">
+              Fotos konnten nicht vollständig geladen werden
+            </p>
+
+            <p className="mt-1 text-sm">
+              {fotoFehler}
+            </p>
           </div>
         )}
 
@@ -510,18 +723,100 @@ export default function LieferscheinDetailPage() {
                                 )}
 
                                 {sammelschein.positionen.map(
-                                  (position) => (
-                                    <p
-                                      key={
-                                        position.id
-                                      }
-                                    >
-                                      {position.menge}{" "}
-                                      {artikelText(
-                                        position,
-                                      )}
-                                    </p>
-                                  ),
+                                  (position) => {
+                                    const positionsFotos =
+                                      fotosFuerPosition(
+                                        position.id,
+                                      );
+
+                                    return (
+                                      <div
+                                        key={
+                                          position.id
+                                        }
+                                        className="rounded-lg border border-slate-200 p-3"
+                                      >
+                                        <p className="font-medium text-slate-800">
+                                          {position.menge}{" "}
+                                          {artikelText(
+                                            position,
+                                          )}
+                                        </p>
+
+                                        {positionsFotos.length >
+                                          0 && (
+                                          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 print:hidden">
+                                            {positionsFotos.map(
+                                              (foto) => (
+                                                <div
+                                                  key={
+                                                    foto.id
+                                                  }
+                                                  className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+                                                >
+                                                  <a
+                                                    href={
+                                                      foto.signierteUrl
+                                                    }
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="block"
+                                                  >
+                                                    <img
+                                                      src={
+                                                        foto.signierteUrl
+                                                      }
+                                                      alt={
+                                                        foto.dateiname
+                                                      }
+                                                      className="h-48 w-full object-cover"
+                                                    />
+                                                  </a>
+
+                                                  <div className="p-3">
+                                                    <p className="truncate text-xs text-slate-600">
+                                                      {
+                                                        foto.dateiname
+                                                      }
+                                                    </p>
+
+                                                    {aktuellerBenutzer?.rolle ===
+                                                      "admin" && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          void fotoLoeschen(
+                                                            foto,
+                                                          )
+                                                        }
+                                                        disabled={
+                                                          fotoWirdGeloescht !==
+                                                          null
+                                                        }
+                                                        className="mt-3 w-full rounded-lg bg-red-700 px-3 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                                      >
+                                                        {fotoWirdGeloescht ===
+                                                        foto.id
+                                                          ? "Foto wird gelöscht ..."
+                                                          : "Foto löschen"}
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              ),
+                                            )}
+                                          </div>
+                                        )}
+
+                                        {positionsFotos.length ===
+                                          0 && (
+                                          <p className="mt-2 text-xs text-slate-400 print:hidden">
+                                            Kein Foto vorhanden
+                                          </p>
+                                        )}
+                                      </div>
+                                    );
+                                  },
                                 )}
                               </div>
                             </div>
