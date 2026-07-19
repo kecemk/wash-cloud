@@ -32,6 +32,23 @@ type Kunde = {
   telefon: string;
 };
 
+type PositionFotos = Record<number, File[]>;
+
+const MAXIMALE_FOTOGROESSE =
+  10 * 1024 * 1024;
+
+function dateinameBereinigen(
+  dateiname: string,
+) {
+  return dateiname
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase() || "foto.jpg";
+}
+
 const artikelMehrzahl: Record<string, string> = {
   Hemd: "Hemden",
   Hose: "Hosen",
@@ -119,6 +136,11 @@ export default function KassePage() {
 
   const [positionen, setPositionen] =
     useState<ArtikelPosition[]>([]);
+
+  const [
+    positionFotos,
+    setPositionFotos,
+  ] = useState<PositionFotos>({});
 
   const [sammelscheine, setSammelscheine] =
     useState<Sammelschein[]>([]);
@@ -451,6 +473,106 @@ export default function KassePage() {
     setSupabaseFehler("");
   }
 
+  function fotosZuPositionHinzufuegen(
+    positionId: number,
+    dateien: FileList | null,
+  ) {
+    if (!dateien) {
+      return;
+    }
+
+    const neueFotos = Array.from(
+      dateien,
+    ).filter((datei) => {
+      if (
+        !datei.type.startsWith("image/")
+      ) {
+        alert(
+          `${datei.name} ist keine Bilddatei.`,
+        );
+        return false;
+      }
+
+      if (
+        datei.size >
+        MAXIMALE_FOTOGROESSE
+      ) {
+        alert(
+          `${datei.name} ist größer als 10 MB.`,
+        );
+        return false;
+      }
+
+      return true;
+    });
+
+    if (neueFotos.length === 0) {
+      return;
+    }
+
+    setPositionFotos(
+      (aktuelleFotos) => ({
+        ...aktuelleFotos,
+        [positionId]: [
+          ...(
+            aktuelleFotos[
+              positionId
+            ] ?? []
+          ),
+          ...neueFotos,
+        ],
+      }),
+    );
+
+    setErfolgsmeldung(
+      `${neueFotos.length} Foto${
+        neueFotos.length === 1
+          ? ""
+          : "s"
+      } wurde${
+        neueFotos.length === 1
+          ? ""
+          : "n"
+      } zur Artikelposition hinzugefügt.`,
+    );
+    setSupabaseFehler("");
+  }
+
+  function fotoVonPositionEntfernen(
+    positionId: number,
+    fotoIndex: number,
+  ) {
+    setPositionFotos(
+      (aktuelleFotos) => {
+        const verbleibendeFotos = (
+          aktuelleFotos[positionId] ??
+          []
+        ).filter(
+          (_, index) =>
+            index !== fotoIndex,
+        );
+
+        const neueFotos = {
+          ...aktuelleFotos,
+        };
+
+        if (
+          verbleibendeFotos.length ===
+          0
+        ) {
+          delete neueFotos[
+            positionId
+          ];
+        } else {
+          neueFotos[positionId] =
+            verbleibendeFotos;
+        }
+
+        return neueFotos;
+      },
+    );
+  }
+
   function artikelPositionLoeschen(
     id: number,
   ) {
@@ -460,6 +582,18 @@ export default function KassePage() {
           (position) =>
             position.id !== id,
         ),
+    );
+
+    setPositionFotos(
+      (aktuelleFotos) => {
+        const neueFotos = {
+          ...aktuelleFotos,
+        };
+
+        delete neueFotos[id];
+
+        return neueFotos;
+      },
     );
 
     setErfolgsmeldung("");
@@ -631,6 +765,12 @@ export default function KassePage() {
       return;
     }
 
+    const geloeschterSammelschein =
+      sammelscheine.find(
+        (sammelschein) =>
+          sammelschein.id === id,
+      );
+
     setSammelscheine(
       (aktuelleSammelscheine) =>
         aktuelleSammelscheine.filter(
@@ -638,6 +778,26 @@ export default function KassePage() {
             sammelschein.id !== id,
         ),
     );
+
+    if (geloeschterSammelschein) {
+      setPositionFotos(
+        (aktuelleFotos) => {
+          const neueFotos = {
+            ...aktuelleFotos,
+          };
+
+          geloeschterSammelschein.positionen.forEach(
+            (position) => {
+              delete neueFotos[
+                position.id
+              ];
+            },
+          );
+
+          return neueFotos;
+        },
+      );
+    }
 
     if (bearbeiteteId === id) {
       formularLeeren();
@@ -723,6 +883,9 @@ export default function KassePage() {
       | number
       | null = null;
 
+    const hochgeladeneDateipfade:
+      string[] = [];
+
     try {
       const neueLieferscheinNummer =
         await naechsteCloudLieferscheinNummerErmitteln();
@@ -765,6 +928,48 @@ export default function KassePage() {
       gespeicherterLieferscheinId =
         neueLieferscheinId;
 
+      const {
+        data: authDaten,
+        error: authFehler,
+      } = await supabase.auth.getUser();
+
+      if (
+        authFehler ||
+        !authDaten.user
+      ) {
+        throw new Error(
+          authFehler?.message ??
+            "Der angemeldete Benutzer konnte nicht ermittelt werden.",
+        );
+      }
+
+      const {
+        data: benutzerDaten,
+        error: benutzerFehler,
+      } = await supabase
+        .from("benutzer")
+        .select("id")
+        .eq(
+          "auth_user_id",
+          authDaten.user.id,
+        )
+        .eq("aktiv", true)
+        .single();
+
+      if (
+        benutzerFehler ||
+        !benutzerDaten
+      ) {
+        throw new Error(
+          benutzerFehler?.message ??
+            "Der aktive Wash-Cloud-Benutzer konnte nicht ermittelt werden.",
+        );
+      }
+
+      const benutzerId = Number(
+        benutzerDaten.id,
+      );
+
       for (
         const sammelschein of
         sammelscheine
@@ -797,29 +1002,126 @@ export default function KassePage() {
           );
         }
 
-        const {
-          error: positionenFehler,
-        } = await supabase
-          .from(
-            "sammelschein_positionen",
-          )
-          .insert(
-            sammelschein.positionen.map(
-              (position) => ({
-                sammelschein_id:
-                  gespeicherterSammelschein.id,
-                artikel:
-                  position.artikel,
-                menge:
-                  position.menge,
-              }),
-            ),
-          );
+        for (
+          const position of
+          sammelschein.positionen
+        ) {
+          const {
+            data:
+              gespeichertePosition,
+            error:
+              positionFehler,
+          } = await supabase
+            .from(
+              "sammelschein_positionen",
+            )
+            .insert({
+              sammelschein_id:
+                gespeicherterSammelschein.id,
+              artikel:
+                position.artikel,
+              menge:
+                position.menge,
+            })
+            .select("id")
+            .single();
 
-        if (positionenFehler) {
-          throw new Error(
-            positionenFehler.message,
-          );
+          if (
+            positionFehler ||
+            !gespeichertePosition
+          ) {
+            throw new Error(
+              positionFehler?.message ??
+                `Die Position ${position.artikel} konnte nicht gespeichert werden.`,
+            );
+          }
+
+          const fotos =
+            positionFotos[
+              position.id
+            ] ?? [];
+
+          for (
+            const foto of fotos
+          ) {
+            const bereinigterDateiname =
+              dateinameBereinigen(
+                foto.name,
+              );
+
+            const dateipfad = [
+              String(
+                ausgewaehlteAnnahmestelleId,
+              ),
+              String(
+                neueLieferscheinId,
+              ),
+              String(
+                gespeicherterSammelschein.id,
+              ),
+              String(
+                gespeichertePosition.id,
+              ),
+              `${crypto.randomUUID()}-${bereinigterDateiname}`,
+            ].join("/");
+
+            const {
+              error: uploadFehler,
+            } = await supabase.storage
+              .from(
+                "lieferschein-fotos",
+              )
+              .upload(
+                dateipfad,
+                foto,
+                {
+                  cacheControl:
+                    "3600",
+                  contentType:
+                    foto.type,
+                  upsert: false,
+                },
+              );
+
+            if (uploadFehler) {
+              throw new Error(
+                `Das Foto ${foto.name} konnte nicht hochgeladen werden: ${uploadFehler.message}`,
+              );
+            }
+
+            hochgeladeneDateipfade.push(
+              dateipfad,
+            );
+
+            const {
+              error: fotoFehler,
+            } = await supabase
+              .from(
+                "lieferschein_fotos",
+              )
+              .insert({
+                lieferschein_id:
+                  neueLieferscheinId,
+                sammelschein_position_id:
+                  gespeichertePosition.id,
+                dateipfad,
+                dateiname:
+                  foto.name,
+                dateityp:
+                  foto.type ||
+                  null,
+                dateigroesse:
+                  foto.size,
+                benutzer_id:
+                  benutzerId,
+              });
+
+            if (fotoFehler) {
+              throw new Error(
+                `Die Zuordnung für ${foto.name} konnte nicht gespeichert werden: ${fotoFehler.message}`,
+              );
+            }
+          }
         }
       }
 
@@ -845,6 +1147,7 @@ export default function KassePage() {
       );
 
       setSammelscheine([]);
+      setPositionFotos({});
       setAusgewaehlteKundenId("");
       formularLeeren();
 
@@ -865,6 +1168,17 @@ export default function KassePage() {
         "Fehler beim Speichern:",
         fehler,
       );
+
+      if (
+        hochgeladeneDateipfade.length >
+        0
+      ) {
+        await supabase.storage
+          .from("lieferschein-fotos")
+          .remove(
+            hochgeladeneDateipfade,
+          );
+      }
 
       if (
         gespeicherterLieferscheinId !==
@@ -934,7 +1248,7 @@ export default function KassePage() {
 
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/annahmestelle"
+              href="/annahmestellen"
               className="rounded-xl border border-slate-600 px-5 py-3 text-sm font-bold text-white"
             >
               Annahmestelle wechseln
@@ -1230,26 +1544,105 @@ export default function KassePage() {
                   (position) => (
                     <div
                       key={position.id}
-                      className="flex items-center justify-between rounded-lg bg-white px-4 py-3 text-slate-900"
+                      className="rounded-lg bg-white px-4 py-3 text-slate-900"
                     >
-                      <span>
-                        {position.menge}{" "}
-                        {artikelText(
-                          position,
-                        )}
-                      </span>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <span className="font-semibold">
+                          {position.menge}{" "}
+                          {artikelText(
+                            position,
+                          )}
+                        </span>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          artikelPositionLoeschen(
-                            position.id,
-                          )
-                        }
-                        className="text-sm font-semibold text-red-600"
-                      >
-                        Entfernen
-                      </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="cursor-pointer rounded-lg bg-blue-700 px-3 py-2 text-sm font-bold text-white">
+                            📷 Foto aufnehmen
+
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              multiple
+                              onChange={(event) => {
+                                fotosZuPositionHinzufuegen(
+                                  position.id,
+                                  event.target.files,
+                                );
+
+                                event.target.value =
+                                  "";
+                              }}
+                              className="hidden"
+                            />
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              artikelPositionLoeschen(
+                                position.id,
+                              )
+                            }
+                            className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600"
+                          >
+                            Entfernen
+                          </button>
+                        </div>
+                      </div>
+
+                      {(
+                        positionFotos[
+                          position.id
+                        ] ?? []
+                      ).length > 0 && (
+                        <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+                          <p className="text-sm font-bold text-green-700">
+                            {
+                              positionFotos[
+                                position.id
+                              ].length
+                            }{" "}
+                            Foto
+                            {positionFotos[
+                              position.id
+                            ].length === 1
+                              ? ""
+                              : "s"}{" "}
+                            ausgewählt
+                          </p>
+
+                          {positionFotos[
+                            position.id
+                          ].map(
+                            (
+                              foto,
+                              fotoIndex,
+                            ) => (
+                              <div
+                                key={`${foto.name}-${foto.lastModified}-${fotoIndex}`}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm"
+                              >
+                                <span className="min-w-0 truncate">
+                                  {foto.name}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    fotoVonPositionEntfernen(
+                                      position.id,
+                                      fotoIndex,
+                                    )
+                                  }
+                                  className="font-bold text-red-600"
+                                >
+                                  Foto entfernen
+                                </button>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      )}
                     </div>
                   ),
                 )}
@@ -1377,6 +1770,18 @@ export default function KassePage() {
                 }
               />
             </div>
+
+            {Object.keys(
+              positionFotos,
+            ).length > 0 && (
+              <div className="mt-6 rounded-xl bg-blue-50 p-4 text-sm text-blue-900">
+                Die ausgewählten Fotos werden
+                zusammen mit dem Lieferschein
+                hochgeladen. Bitte die Seite bis
+                zum erfolgreichen Abschluss nicht
+                schließen.
+              </div>
+            )}
 
             <button
               type="button"
