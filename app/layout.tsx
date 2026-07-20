@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Wash Cloud",
+  title: "Washly",
   description:
     "Verwaltung für Annahmestellen, Kunden, Lieferscheine, Lieferungen und Rechnungen.",
 };

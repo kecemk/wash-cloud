@@ -175,7 +175,7 @@ export default function LoginPage() {
       <section className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
         <div>
           <p className="text-sm font-semibold uppercase tracking-widest text-blue-700">
-            Wash Cloud
+            Washly
           </p>
 
           <h1 className="mt-2 text-3xl font-bold text-slate-950">
