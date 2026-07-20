@@ -57,6 +57,17 @@ type ChatNachricht = {
   signierteUrl: string | null;
 };
 
+type ChatLesestatus = {
+  annahmestelle_id: number;
+  zuletzt_gelesen_am: string;
+};
+
+type ChatNachrichtenZeit = {
+  annahmestelle_id: number;
+  absender_benutzer_id: number;
+  erstellt_am: string;
+};
+
 function einzelnesElementErmitteln<T>(
   wert: T | T[] | null,
 ): T | null {
@@ -146,6 +157,11 @@ export default function ChatPage() {
     nachrichten,
     setNachrichten,
   ] = useState<ChatNachricht[]>([]);
+
+  const [
+    ungeleseneJeAnnahmestelle,
+    setUngeleseneJeAnnahmestelle,
+  ] = useState<Record<number, number>>({});
 
   const [nachricht, setNachricht] =
     useState("");
@@ -302,11 +318,155 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (
+      !aktuellerBenutzer ||
+      annahmestellen.length === 0
+    ) {
+      setUngeleseneJeAnnahmestelle({});
+      return;
+    }
+
+    const aktuellerBenutzerId =
+      aktuellerBenutzer.id;
+
+    let istAktiv = true;
+
+    async function ungeleseneNachrichtenLaden() {
+      const [
+        lesestatusErgebnis,
+        nachrichtenErgebnis,
+      ] = await Promise.all([
+        supabase
+          .from("chat_lesestatus")
+          .select(`
+            annahmestelle_id,
+            zuletzt_gelesen_am
+          `)
+          .eq(
+            "benutzer_id",
+            aktuellerBenutzerId,
+          ),
+        supabase
+          .from("chat_nachrichten")
+          .select(`
+            annahmestelle_id,
+            absender_benutzer_id,
+            erstellt_am
+          `),
+      ]);
+
+      if (!istAktiv) {
+        return;
+      }
+
+      if (
+        lesestatusErgebnis.error ||
+        nachrichtenErgebnis.error
+      ) {
+        console.error(
+          "Ungelesene Chatnachrichten konnten nicht geladen werden:",
+          lesestatusErgebnis.error ??
+            nachrichtenErgebnis.error,
+        );
+        return;
+      }
+
+      const lesestatusDaten =
+        (lesestatusErgebnis.data ??
+          []) as ChatLesestatus[];
+
+      const nachrichtenDaten =
+        (nachrichtenErgebnis.data ??
+          []) as ChatNachrichtenZeit[];
+
+      const zuletztGelesenJeAnnahmestelle =
+        new Map<number, number>();
+
+      for (const lesestatus of lesestatusDaten) {
+        const zeit = new Date(
+          lesestatus.zuletzt_gelesen_am,
+        ).getTime();
+
+        zuletztGelesenJeAnnahmestelle.set(
+          lesestatus.annahmestelle_id,
+          Number.isFinite(zeit) ? zeit : 0,
+        );
+      }
+
+      const neueAnzahlen: Record<
+        number,
+        number
+      > = {};
+
+      for (const annahmestelle of annahmestellen) {
+        neueAnzahlen[annahmestelle.id] = 0;
+      }
+
+      for (const chatNachricht of nachrichtenDaten) {
+        if (
+          chatNachricht.absender_benutzer_id ===
+          aktuellerBenutzerId
+        ) {
+          continue;
+        }
+
+        const nachrichtenZeit = new Date(
+          chatNachricht.erstellt_am,
+        ).getTime();
+
+        const zuletztGelesen =
+          zuletztGelesenJeAnnahmestelle.get(
+            chatNachricht.annahmestelle_id,
+          ) ?? 0;
+
+        if (
+          Number.isFinite(nachrichtenZeit) &&
+          nachrichtenZeit > zuletztGelesen
+        ) {
+          neueAnzahlen[
+            chatNachricht.annahmestelle_id
+          ] =
+            (neueAnzahlen[
+              chatNachricht.annahmestelle_id
+            ] ?? 0) + 1;
+        }
+      }
+
+      setUngeleseneJeAnnahmestelle(
+        neueAnzahlen,
+      );
+    }
+
+    void ungeleseneNachrichtenLaden();
+
+    const intervall = window.setInterval(
+      () => {
+        void ungeleseneNachrichtenLaden();
+      },
+      3000,
+    );
+
+    return () => {
+      istAktiv = false;
+      window.clearInterval(intervall);
+    };
+  }, [
+    aktuellerBenutzer,
+    annahmestellen,
+  ]);
+
+  useEffect(() => {
+    if (
       !ausgewaehlteAnnahmestelleId
     ) {
       setNachrichten([]);
       return;
     }
+
+    const aktuelleAnnahmestelleId =
+      ausgewaehlteAnnahmestelleId;
+
+    const aktuellerBenutzerId =
+      aktuellerBenutzer?.id ?? null;
 
     let istAktiv = true;
 
@@ -340,7 +500,7 @@ export default function ChatPage() {
           `)
           .eq(
             "annahmestelle_id",
-            ausgewaehlteAnnahmestelleId,
+            aktuelleAnnahmestelleId,
           )
           .order("erstellt_am", {
             ascending: true,
@@ -439,6 +599,47 @@ export default function ChatPage() {
       );
       setFehler("");
 
+      if (aktuellerBenutzerId !== null) {
+        const gelesenAm =
+          new Date().toISOString();
+
+        const {
+          error: lesestatusFehler,
+        } = await supabase
+          .from("chat_lesestatus")
+          .upsert(
+            {
+              benutzer_id:
+                aktuellerBenutzerId,
+              annahmestelle_id:
+                aktuelleAnnahmestelleId,
+              zuletzt_gelesen_am:
+                gelesenAm,
+              aktualisiert_am:
+                gelesenAm,
+            },
+            {
+              onConflict:
+                "benutzer_id,annahmestelle_id",
+            },
+          );
+
+        if (lesestatusFehler) {
+          console.error(
+            "Der Chat-Lesestatus konnte nicht gespeichert werden:",
+            lesestatusFehler,
+          );
+        } else {
+          setUngeleseneJeAnnahmestelle(
+            (aktuelleAnzahlen) => ({
+              ...aktuelleAnzahlen,
+              [aktuelleAnnahmestelleId]:
+                0,
+            }),
+          );
+        }
+      }
+
       if (!still) {
         setLaedt(false);
       }
@@ -457,7 +658,10 @@ export default function ChatPage() {
       istAktiv = false;
       window.clearInterval(intervall);
     };
-  }, [ausgewaehlteAnnahmestelleId]);
+  }, [
+    ausgewaehlteAnnahmestelleId,
+    aktuellerBenutzer,
+  ]);
 
   useEffect(() => {
     nachrichtenEndeRef.current?.scrollIntoView({
@@ -755,7 +959,23 @@ export default function ChatPage() {
                             : "bg-white text-slate-800 hover:bg-slate-200"
                         }`}
                       >
-                        {annahmestelle.name}
+                        <span className="flex items-center justify-between gap-3">
+                          <span>
+                            {annahmestelle.name}
+                          </span>
+
+                          {(ungeleseneJeAnnahmestelle[
+                            annahmestelle.id
+                          ] ?? 0) > 0 && (
+                            <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
+                              {
+                                ungeleseneJeAnnahmestelle[
+                                  annahmestelle.id
+                                ]
+                              }
+                            </span>
+                          )}
+                        </span>
                       </button>
                     ),
                   )}
