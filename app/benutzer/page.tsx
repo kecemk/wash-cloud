@@ -71,6 +71,7 @@ type BenutzerFormular = {
   vorname: string;
   nachname: string;
   email: string;
+  startpasswort: string;
   rolle: Rolle;
   annahmestelleId: string;
 };
@@ -80,6 +81,7 @@ const leeresFormular: BenutzerFormular = {
   vorname: "",
   nachname: "",
   email: "",
+  startpasswort: "",
   rolle: "mitarbeiter",
   annahmestelleId: "",
 };
@@ -209,6 +211,47 @@ function datumFormatieren(
       minute: "2-digit",
     },
   );
+}
+
+function sicheresStartpasswortErzeugen() {
+  const grossbuchstaben =
+    "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const kleinbuchstaben =
+    "abcdefghijkmnopqrstuvwxyz";
+  const zahlen = "23456789";
+  const sonderzeichen = "!@#$%&*-_";
+
+  const alleZeichen =
+    grossbuchstaben +
+    kleinbuchstaben +
+    zahlen +
+    sonderzeichen;
+
+  const zufaelligesZeichen = (
+    zeichen: string,
+  ) =>
+    zeichen[
+      Math.floor(
+        Math.random() * zeichen.length,
+      )
+    ];
+
+  const bestandteile = [
+    zufaelligesZeichen(grossbuchstaben),
+    zufaelligesZeichen(kleinbuchstaben),
+    zufaelligesZeichen(zahlen),
+    zufaelligesZeichen(sonderzeichen),
+  ];
+
+  while (bestandteile.length < 14) {
+    bestandteile.push(
+      zufaelligesZeichen(alleZeichen),
+    );
+  }
+
+  return bestandteile
+    .sort(() => Math.random() - 0.5)
+    .join("");
 }
 
 export default function BenutzerPage() {
@@ -427,6 +470,24 @@ export default function BenutzerPage() {
     }
 
     if (
+      formular.startpasswort.length < 10 ||
+      !/[A-Z]/.test(
+        formular.startpasswort,
+      ) ||
+      !/[a-z]/.test(
+        formular.startpasswort,
+      ) ||
+      !/\d/.test(
+        formular.startpasswort,
+      )
+    ) {
+      setFehler(
+        "Das Startpasswort muss mindestens 10 Zeichen lang sein und Großbuchstaben, Kleinbuchstaben sowie eine Zahl enthalten.",
+      );
+      return;
+    }
+
+    if (
       formular.rolle ===
         "annahmestelle" &&
       !formular.annahmestelleId
@@ -472,6 +533,8 @@ export default function BenutzerPage() {
             vorname,
             nachname,
             email,
+            startpasswort:
+              formular.startpasswort,
             rolle: formular.rolle,
             annahmestelleId:
               formular.annahmestelleId
@@ -867,8 +930,8 @@ export default function BenutzerPage() {
             </h2>
 
             <p className="mt-1 text-sm text-slate-600">
-              Auth-Konto erstellen und Einladung
-              per E-Mail versenden
+              Auth-Konto mit E-Mail-Adresse und
+              Startpasswort erstellen
             </p>
 
             <form
@@ -962,6 +1025,50 @@ export default function BenutzerPage() {
 
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">
+                  Startpasswort
+                </span>
+
+                <div className="mt-2 flex gap-2">
+                  <input
+                    type="text"
+                    value={
+                      formular.startpasswort
+                    }
+                    onChange={(event) =>
+                      formularFeldAendern(
+                        "startpasswort",
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Mindestens 10 Zeichen"
+                    autoComplete="new-password"
+                    required
+                    className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      formularFeldAendern(
+                        "startpasswort",
+                        sicheresStartpasswortErzeugen(),
+                      )
+                    }
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700"
+                  >
+                    Erzeugen
+                  </button>
+                </div>
+
+                <p className="mt-2 text-xs text-slate-500">
+                  Das Passwort jetzt sicher
+                  notieren und der Person
+                  persönlich mitteilen.
+                </p>
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">
                   Rolle
                 </span>
 
@@ -1048,8 +1155,8 @@ export default function BenutzerPage() {
                 className="w-full rounded-xl bg-slate-950 px-5 py-4 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {speichert
-                  ? "Einladung wird versendet ..."
-                  : "Benutzer anlegen und einladen"}
+                  ? "Benutzer wird angelegt ..."
+                  : "Benutzer mit Zugang anlegen"}
               </button>
             </form>
           </div>

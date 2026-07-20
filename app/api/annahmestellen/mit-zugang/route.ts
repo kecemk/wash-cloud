@@ -6,32 +6,15 @@ import {
   NextResponse,
 } from "next/server";
 
-type Rolle =
-  | "admin"
-  | "verwaltung"
-  | "annahmestelle"
-  | "produktion"
-  | "fahrer"
-  | "mitarbeiter";
-
-type BenutzerAnlegenAnfrage = {
-  benutzername?: unknown;
-  vorname?: unknown;
-  nachname?: unknown;
+type AnnahmestelleMitZugangAnfrage = {
+  name?: unknown;
+  adresse?: unknown;
+  telefon?: unknown;
+  ansprechpartnerVorname?: unknown;
+  ansprechpartnerNachname?: unknown;
   email?: unknown;
   startpasswort?: unknown;
-  rolle?: unknown;
-  annahmestelleId?: unknown;
 };
-
-const ERLAUBTE_ROLLEN: Rolle[] = [
-  "admin",
-  "verwaltung",
-  "annahmestelle",
-  "produktion",
-  "fahrer",
-  "mitarbeiter",
-];
 
 function textErmitteln(
   wert: unknown,
@@ -39,14 +22,6 @@ function textErmitteln(
   return typeof wert === "string"
     ? wert.trim()
     : "";
-}
-
-function rolleIstGueltig(
-  wert: string,
-): wert is Rolle {
-  return ERLAUBTE_ROLLEN.includes(
-    wert as Rolle,
-  );
 }
 
 function fehlerAntwort(
@@ -72,6 +47,20 @@ function startpasswortIstGueltig(
     /[a-z]/.test(startpasswort) &&
     /\d/.test(startpasswort)
   );
+}
+
+function benutzernameBereinigen(
+  email: string,
+) {
+  const lokalerTeil =
+    email.split("@")[0] ?? "annahmestelle";
+
+  const bereinigt = lokalerTeil
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "")
+    .replace(/^[._-]+|[._-]+$/g, "");
+
+  return bereinigt || "annahmestelle";
 }
 
 export async function POST(
@@ -172,16 +161,16 @@ export async function POST(
     handelnderBenutzer.rolle !== "admin"
   ) {
     return fehlerAntwort(
-      "Nur Administratoren dürfen Benutzer anlegen.",
+      "Nur Administratoren dürfen Annahmestellen mit Zugang anlegen.",
       403,
     );
   }
 
-  let anfrage: BenutzerAnlegenAnfrage;
+  let anfrage: AnnahmestelleMitZugangAnfrage;
 
   try {
     anfrage =
-      (await request.json()) as BenutzerAnlegenAnfrage;
+      (await request.json()) as AnnahmestelleMitZugangAnfrage;
   } catch {
     return fehlerAntwort(
       "Die übermittelten Daten sind ungültig.",
@@ -189,16 +178,24 @@ export async function POST(
     );
   }
 
-  const benutzername =
+  const name =
+    textErmitteln(anfrage.name);
+
+  const adresse =
+    textErmitteln(anfrage.adresse);
+
+  const telefon =
+    textErmitteln(anfrage.telefon);
+
+  const ansprechpartnerVorname =
     textErmitteln(
-      anfrage.benutzername,
-    ).toLowerCase();
+      anfrage.ansprechpartnerVorname,
+    );
 
-  const vorname =
-    textErmitteln(anfrage.vorname);
-
-  const nachname =
-    textErmitteln(anfrage.nachname);
+  const ansprechpartnerNachname =
+    textErmitteln(
+      anfrage.ansprechpartnerNachname,
+    );
 
   const email =
     textErmitteln(
@@ -210,30 +207,9 @@ export async function POST(
       anfrage.startpasswort,
     );
 
-  const rolle =
-    textErmitteln(anfrage.rolle);
-
-  const annahmestelleId =
-    typeof anfrage.annahmestelleId ===
-      "number" &&
-    Number.isInteger(
-      anfrage.annahmestelleId,
-    )
-      ? anfrage.annahmestelleId
-      : null;
-
-  if (!benutzername) {
+  if (!name) {
     return fehlerAntwort(
-      "Bitte gib einen Benutzernamen ein.",
-      400,
-    );
-  }
-
-  if (
-    benutzername.includes(" ")
-  ) {
-    return fehlerAntwort(
-      "Der Benutzername darf keine Leerzeichen enthalten.",
+      "Bitte gib den Namen der Annahmestelle ein.",
       400,
     );
   }
@@ -259,20 +235,35 @@ export async function POST(
     );
   }
 
-  if (!rolleIstGueltig(rolle)) {
+  const {
+    data: bestehendeAnnahmestelle,
+    error:
+      bestehendeAnnahmestelleFehler,
+  } = await serverSupabase
+    .from("annahmestellen")
+    .select("id")
+    .ilike("name", name)
+    .limit(1);
+
+  if (bestehendeAnnahmestelleFehler) {
+    console.error(
+      "Annahmestelle konnte nicht geprüft werden:",
+      bestehendeAnnahmestelleFehler,
+    );
+
     return fehlerAntwort(
-      "Die ausgewählte Rolle ist ungültig.",
-      400,
+      "Die Annahmestelle konnte nicht geprüft werden.",
+      500,
     );
   }
 
   if (
-    rolle === "annahmestelle" &&
-    annahmestelleId === null
+    bestehendeAnnahmestelle &&
+    bestehendeAnnahmestelle.length > 0
   ) {
     return fehlerAntwort(
-      "Bitte ordne dem Benutzer eine Annahmestelle zu.",
-      400,
+      "Eine Annahmestelle mit diesem Namen ist bereits vorhanden.",
+      409,
     );
   }
 
@@ -282,9 +273,7 @@ export async function POST(
   } = await serverSupabase
     .from("benutzer")
     .select("id")
-    .or(
-      `benutzername.eq.${benutzername},email.eq.${email}`,
-    )
+    .eq("email", email)
     .limit(1);
 
   if (bestehenderBenutzerFehler) {
@@ -304,10 +293,92 @@ export async function POST(
     bestehenderBenutzer.length > 0
   ) {
     return fehlerAntwort(
-      "Benutzername oder E-Mail-Adresse wird bereits verwendet.",
+      "Diese E-Mail-Adresse wird bereits verwendet.",
       409,
     );
   }
+
+  const basisBenutzername =
+    benutzernameBereinigen(email);
+
+  let benutzername =
+    basisBenutzername;
+
+  for (
+    let versuch = 1;
+    versuch <= 50;
+    versuch += 1
+  ) {
+    const {
+      data: treffer,
+      error: trefferFehler,
+    } = await serverSupabase
+      .from("benutzer")
+      .select("id")
+      .eq(
+        "benutzername",
+        benutzername,
+      )
+      .limit(1);
+
+    if (trefferFehler) {
+      console.error(
+        "Benutzername konnte nicht geprüft werden:",
+        trefferFehler,
+      );
+
+      return fehlerAntwort(
+        "Der Benutzername konnte nicht geprüft werden.",
+        500,
+      );
+    }
+
+    if (!treffer || treffer.length === 0) {
+      break;
+    }
+
+    benutzername =
+      `${basisBenutzername}${versuch + 1}`;
+  }
+
+  const {
+    data: neueAnnahmestelle,
+    error: annahmestelleFehler,
+  } = await serverSupabase
+    .from("annahmestellen")
+    .insert({
+      name,
+      adresse: adresse || null,
+      telefon: telefon || null,
+      aktiv: true,
+    })
+    .select(`
+      id,
+      name,
+      adresse,
+      telefon,
+      aktiv
+    `)
+    .single();
+
+  if (
+    annahmestelleFehler ||
+    !neueAnnahmestelle
+  ) {
+    console.error(
+      "Annahmestelle konnte nicht angelegt werden:",
+      annahmestelleFehler,
+    );
+
+    return fehlerAntwort(
+      annahmestelleFehler?.message ??
+        "Die Annahmestelle konnte nicht angelegt werden.",
+      500,
+    );
+  }
+
+  const annahmestelleId =
+    Number(neueAnnahmestelle.id);
 
   const {
     data: authBenutzerDaten,
@@ -319,9 +390,13 @@ export async function POST(
       email_confirm: true,
       user_metadata: {
         benutzername,
-        vorname,
-        nachname,
-        rolle,
+        vorname:
+          ansprechpartnerVorname,
+        nachname:
+          ansprechpartnerNachname,
+        rolle: "annahmestelle",
+        annahmestelle_id:
+          annahmestelleId,
       },
     });
 
@@ -334,9 +409,26 @@ export async function POST(
       authBenutzerFehler,
     );
 
+    const {
+      error:
+        annahmestelleLoeschFehler,
+    } = await serverSupabase
+      .from("annahmestellen")
+      .delete()
+      .eq("id", annahmestelleId);
+
+    if (
+      annahmestelleLoeschFehler
+    ) {
+      console.error(
+        "Unvollständige Annahmestelle konnte nicht entfernt werden:",
+        annahmestelleLoeschFehler,
+      );
+    }
+
     return fehlerAntwort(
       authBenutzerFehler?.message ??
-        "Das Auth-Konto konnte nicht erstellt werden.",
+        "Das Zugangskonto konnte nicht erstellt werden.",
       400,
     );
   }
@@ -346,21 +438,24 @@ export async function POST(
 
   const {
     data: neuerBenutzer,
-    error: datenbankFehler,
+    error: benutzerFehler,
   } = await serverSupabase
     .from("benutzer")
     .insert({
-      auth_user_id: authBenutzerId,
+      auth_user_id:
+        authBenutzerId,
       benutzername,
-      vorname: vorname || null,
-      nachname: nachname || null,
+      vorname:
+        ansprechpartnerVorname ||
+        null,
+      nachname:
+        ansprechpartnerNachname ||
+        null,
       email,
-      rolle,
+      rolle: "annahmestelle",
       aktiv: true,
       annahmestelle_id:
-        rolle === "annahmestelle"
-          ? annahmestelleId
-          : null,
+        annahmestelleId,
     })
     .select(`
       id,
@@ -371,38 +466,50 @@ export async function POST(
       rolle,
       aktiv,
       annahmestelle_id,
-      erstellt_am,
-      auth_user_id,
-      annahmestellen (
-        id,
-        name
-      )
+      erstellt_am
     `)
     .single();
 
   if (
-    datenbankFehler ||
+    benutzerFehler ||
     !neuerBenutzer
   ) {
     console.error(
       "Interner Benutzer konnte nicht angelegt werden:",
-      datenbankFehler,
+      benutzerFehler,
     );
 
-    const { error: loeschFehler } =
+    const { error: authLoeschFehler } =
       await serverSupabase.auth.admin.deleteUser(
         authBenutzerId,
       );
 
-    if (loeschFehler) {
+    if (authLoeschFehler) {
       console.error(
         "Unvollständiges Auth-Konto konnte nicht entfernt werden:",
-        loeschFehler,
+        authLoeschFehler,
+      );
+    }
+
+    const {
+      error:
+        annahmestelleLoeschFehler,
+    } = await serverSupabase
+      .from("annahmestellen")
+      .delete()
+      .eq("id", annahmestelleId);
+
+    if (
+      annahmestelleLoeschFehler
+    ) {
+      console.error(
+        "Unvollständige Annahmestelle konnte nicht entfernt werden:",
+        annahmestelleLoeschFehler,
       );
     }
 
     return fehlerAntwort(
-      datenbankFehler?.message ??
+      benutzerFehler?.message ??
         "Der interne Benutzer konnte nicht angelegt werden.",
       500,
     );
@@ -410,9 +517,15 @@ export async function POST(
 
   return NextResponse.json(
     {
+      annahmestelle:
+        neueAnnahmestelle,
       benutzer: neuerBenutzer,
+      zugang: {
+        email,
+        benutzername,
+      },
       nachricht:
-        "Der Benutzer wurde angelegt und kann sich sofort mit E-Mail-Adresse und Startpasswort anmelden.",
+        "Annahmestelle und Zugang wurden erfolgreich angelegt.",
     },
     {
       status: 201,
