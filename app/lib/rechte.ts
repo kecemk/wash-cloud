@@ -26,6 +26,8 @@ export type Berechtigung =
   | "lager_anzeigen"
   | "lager_verbrauch_buchen"
   | "lager_verwalten"
+  | "chat_anzeigen"
+  | "chat_schreiben"
   | "einstellungen_anzeigen";
 
 export type RollenInformation = {
@@ -56,7 +58,7 @@ export const rollenInformationen: Record<
     rolle: "annahmestelle",
     name: "Annahmestelle",
     beschreibung:
-      "Lesezugriff ausschließlich auf die eigenen Lieferscheine und Rechnungen.",
+      "Lesezugriff ausschließlich auf die eigenen Lieferscheine und Rechnungen sowie Zugriff auf den eigenen Chat.",
   },
 
   produktion: {
@@ -77,7 +79,7 @@ export const rollenInformationen: Record<
     rolle: "mitarbeiter",
     name: "Mitarbeiter",
     beschreibung:
-      "Zugriff auf Kasse, Kunden, Lieferscheine und Lagerverbrauch.",
+      "Zugriff auf Kasse, Kunden, Lieferscheine, Lagerverbrauch und den Chat mit Annahmestellen.",
   },
 };
 
@@ -105,6 +107,8 @@ const rechteJeRolle: Record<
     "lager_anzeigen",
     "lager_verbrauch_buchen",
     "lager_verwalten",
+    "chat_anzeigen",
+    "chat_schreiben",
     "einstellungen_anzeigen",
   ],
 
@@ -123,6 +127,8 @@ const rechteJeRolle: Record<
   annahmestelle: [
     "lieferscheine_anzeigen",
     "rechnungen_anzeigen",
+    "chat_anzeigen",
+    "chat_schreiben",
   ],
 
   produktion: [
@@ -149,6 +155,8 @@ const rechteJeRolle: Record<
     "kunden_bearbeiten",
     "lager_anzeigen",
     "lager_verbrauch_buchen",
+    "chat_anzeigen",
+    "chat_schreiben",
   ],
 };
 
@@ -287,6 +295,24 @@ export function darfLagerverbrauchBuchen(
   return hatBerechtigung(
     rolle,
     "lager_verbrauch_buchen",
+  );
+}
+
+export function darfChatAnzeigen(
+  rolle: BenutzerRolle,
+) {
+  return hatBerechtigung(
+    rolle,
+    "chat_anzeigen",
+  );
+}
+
+export function darfChatSchreiben(
+  rolle: BenutzerRolle,
+) {
+  return hatBerechtigung(
+    rolle,
+    "chat_schreiben",
   );
 }
 

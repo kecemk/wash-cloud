@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import ZugriffsSchutz from "../components/ZugriffsSchutz";
 import { supabase } from "../lib/supabase";
 
@@ -10,20 +13,66 @@ type Annahmestelle = {
   aktiv: boolean;
 };
 
-export default async function AnnahmestellePage() {
-  const { data, error } = await supabase
-    .from("annahmestellen")
-    .select(
-      "id, name, adresse, telefon, aktiv",
-    )
-    .eq("aktiv", true)
-    .order("name", {
-      ascending: true,
-    });
+export default function AnnahmestellenPage() {
+  const [
+    annahmestellen,
+    setAnnahmestellen,
+  ] = useState<Annahmestelle[]>([]);
 
-  const annahmestellen =
-    (data as Annahmestelle[] | null) ??
-    [];
+  const [laedt, setLaedt] =
+    useState(true);
+
+  const [fehler, setFehler] =
+    useState("");
+
+  useEffect(() => {
+    let istAktiv = true;
+
+    async function annahmestellenLaden() {
+      setLaedt(true);
+      setFehler("");
+
+      const { data, error } =
+        await supabase
+          .from("annahmestellen")
+          .select(
+            "id, name, adresse, telefon, aktiv",
+          )
+          .eq("aktiv", true)
+          .order("name", {
+            ascending: true,
+          });
+
+      if (!istAktiv) {
+        return;
+      }
+
+      if (error) {
+        console.error(
+          "Annahmestellen konnten nicht geladen werden:",
+          error,
+        );
+
+        setFehler(error.message);
+        setAnnahmestellen([]);
+        setLaedt(false);
+        return;
+      }
+
+      setAnnahmestellen(
+        (data as Annahmestelle[] | null) ??
+          [],
+      );
+
+      setLaedt(false);
+    }
+
+    void annahmestellenLaden();
+
+    return () => {
+      istAktiv = false;
+    };
+  }, []);
 
   return (
     <ZugriffsSchutz
@@ -52,7 +101,15 @@ export default async function AnnahmestellePage() {
             du einen Lieferschein erstellen?
           </p>
 
-          {error && (
+          {laedt && (
+            <div className="mt-8 rounded-xl bg-white p-6 shadow">
+              <p className="text-slate-600">
+                Annahmestellen werden geladen ...
+              </p>
+            </div>
+          )}
+
+          {!laedt && fehler && (
             <div className="mt-8 rounded-xl bg-red-100 p-5 text-red-800">
               <p className="font-bold">
                 Annahmestellen konnten nicht
@@ -60,12 +117,23 @@ export default async function AnnahmestellePage() {
               </p>
 
               <p className="mt-2 text-sm">
-                {error.message}
+                {fehler}
               </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  window.location.reload()
+                }
+                className="mt-4 rounded-xl bg-red-800 px-4 py-2 font-bold text-white"
+              >
+                Erneut versuchen
+              </button>
             </div>
           )}
 
-          {!error &&
+          {!laedt &&
+            !fehler &&
             annahmestellen.length === 0 && (
               <div className="mt-8 rounded-xl bg-white p-6 shadow">
                 <p className="font-bold text-slate-900">
@@ -80,7 +148,8 @@ export default async function AnnahmestellePage() {
               </div>
             )}
 
-          {!error &&
+          {!laedt &&
+            !fehler &&
             annahmestellen.length > 0 && (
               <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
                 {annahmestellen.map(
