@@ -967,7 +967,7 @@ export default function KassePage() {
       ) {
         throw new Error(
           benutzerFehler?.message ??
-            "Der aktive Wash-Cloud-Benutzer konnte nicht ermittelt werden.",
+            "Der aktive Washly-Benutzer konnte nicht ermittelt werden.",
         );
       }
 
@@ -1238,7 +1238,7 @@ export default function KassePage() {
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm text-slate-300">
-              Wash Cloud
+              Washly
             </p>
 
             <h1 className="text-2xl font-bold">
