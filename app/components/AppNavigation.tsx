@@ -203,7 +203,7 @@ export default function AppNavigation() {
               setMobilIstOffen(false);
             }}
           >
-            ☁ Wash Cloud
+            Washly
           </Link>
 
           <div className="hidden items-center gap-2 lg:flex">
