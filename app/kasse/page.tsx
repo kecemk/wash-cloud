@@ -187,6 +187,11 @@ export default function KassePage() {
   const [speichert, setSpeichert] =
     useState(false);
 
+  const [
+    kundenAuswahlIstOffen,
+    setKundenAuswahlIstOffen,
+  ] = useState(false);
+
   useEffect(() => {
     async function kundenLaden() {
       setKundenWerdenGeladen(true);
@@ -1248,10 +1253,10 @@ export default function KassePage() {
 
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/annahmestellen"
+              href="/"
               className="rounded-xl border border-slate-600 px-5 py-3 text-sm font-bold text-white"
             >
-              Annahmestelle wechseln
+              Zurück zur Auswahl
             </Link>
 
             <Link
@@ -1300,140 +1305,128 @@ export default function KassePage() {
           </div>
         )}
 
-        <div className="mb-6 grid gap-4 rounded-xl bg-white p-4 shadow md:grid-cols-3">
-          <div>
-            <p className="text-sm text-slate-600">
-              Ausgewählte Annahmestelle
-            </p>
+        <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-blue-700">
+                Ausgewählte Annahmestelle
+              </p>
 
-            <p className="mt-1 font-bold text-blue-700">
-              {ausgewaehlteAnnahmestelle}
-            </p>
-          </div>
+              <p className="mt-1 text-2xl font-bold text-slate-950">
+                {ausgewaehlteAnnahmestelle}
+              </p>
+            </div>
 
-          <div>
-            <p className="text-sm text-slate-600">
-              Voraussichtliche nächste Nummer
-            </p>
+            <div className="text-left sm:text-right">
+              <p className="text-sm text-slate-600">
+                Neuer Lieferschein
+              </p>
 
-            <p className="mt-1 text-xl font-bold text-slate-900">
-              {naechsteLieferscheinNummer}
-            </p>
-          </div>
-
-          <div className="md:text-right">
-            <p className="text-sm text-slate-600">
-              In diesem Browser fertiggestellt
-            </p>
-
-            <p className="mt-1 text-xl font-bold text-slate-900">
-              {fertigeLieferscheine.length}
-            </p>
+              <p className="mt-1 font-bold text-slate-950">
+                {naechsteLieferscheinNummer}
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="mb-6 rounded-2xl bg-white p-6 shadow">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="mb-6 rounded-2xl bg-white p-5 shadow">
+          <button
+            type="button"
+            onClick={() =>
+              setKundenAuswahlIstOffen(
+                (istOffen) => !istOffen,
+              )
+            }
+            className="flex w-full items-center justify-between gap-4 text-left"
+          >
             <div>
-              <h2 className="text-xl font-bold text-slate-900">
-                Kunde
-              </h2>
+              <p className="font-bold text-slate-950">
+                Kunde auswählen
+              </p>
 
               <p className="mt-1 text-sm text-slate-600">
-                Optional einen bestehenden Kunden
-                auswählen.
+                Optional – ohne Auswahl wird der Auftrag als Laufkunde gespeichert.
               </p>
             </div>
 
-            <Link
-              href="/kunden"
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700"
-            >
-              Kunden verwalten
-            </Link>
-          </div>
-
-          <label className="mt-5 block">
-            <span className="text-sm font-medium text-slate-700">
-              Kunde für diesen Lieferschein
+            <span className="text-xl font-bold text-blue-700">
+              {kundenAuswahlIstOffen ? "−" : "+"}
             </span>
+          </button>
 
-            <select
-              value={
-                ausgewaehlteKundenId
-              }
-              onChange={(event) => {
-                setAusgewaehlteKundenId(
-                  event.target.value,
-                );
+          {kundenAuswahlIstOffen && (
+            <div className="mt-5 border-t border-slate-200 pt-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-slate-700">
+                    Kunde für diesen Lieferschein
+                  </span>
 
-                setErfolgsmeldung("");
-                setSupabaseFehler("");
-              }}
-              disabled={
-                kundenWerdenGeladen
-              }
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100"
-            >
-              <option value="">
-                {kundenWerdenGeladen
-                  ? "Kunden werden geladen ..."
-                  : "Laufkunde – kein Kunde ausgewählt"}
-              </option>
+                  <select
+                    value={ausgewaehlteKundenId}
+                    onChange={(event) => {
+                      setAusgewaehlteKundenId(
+                        event.target.value,
+                      );
 
-              {kunden.map((kunde) => (
-                <option
-                  key={kunde.id}
-                  value={kunde.id}
+                      setErfolgsmeldung("");
+                      setSupabaseFehler("");
+                    }}
+                    disabled={kundenWerdenGeladen}
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  >
+                    <option value="">
+                      {kundenWerdenGeladen
+                        ? "Kunden werden geladen ..."
+                        : "Laufkunde – kein Kunde ausgewählt"}
+                    </option>
+
+                    {kunden.map((kunde) => (
+                      <option
+                        key={kunde.id}
+                        value={kunde.id}
+                      >
+                        {kunde.kundennummer} –{" "}
+                        {kundenNameErmitteln(kunde)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <Link
+                  href="/kunden"
+                  className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700"
                 >
-                  {kunde.kundennummer} –{" "}
-                  {kundenNameErmitteln(
-                    kunde,
-                  )}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {ausgewaehlterKunde ? (
-            <div className="mt-4 rounded-xl bg-blue-50 p-4 text-blue-900">
-              <p className="font-bold">
-                {kundenNameErmitteln(
-                  ausgewaehlterKunde,
-                )}
-              </p>
-
-              <p className="mt-1 text-sm">
-                {
-                  ausgewaehlterKunde.kundennummer
-                }
-                {ausgewaehlterKunde.telefon
-                  ? ` · ${ausgewaehlterKunde.telefon}`
-                  : ""}
-              </p>
-
-              <Link
-                href={`/kunde/${encodeURIComponent(
-                  ausgewaehlterKunde.kundennummer,
-                )}`}
-                className="mt-3 inline-block text-sm font-bold text-blue-700 hover:underline"
-              >
-                Kundendetails öffnen
-              </Link>
-            </div>
-          ) : (
-            !kundenWerdenGeladen && (
-              <div className="mt-4 rounded-xl bg-slate-100 p-4 text-sm text-slate-700">
-                Dieser Lieferschein wird ohne
-                Kundenverknüpfung als Laufkunde
-                gespeichert.
+                  Kunden verwalten
+                </Link>
               </div>
-            )
+
+              {ausgewaehlterKunde && (
+                <div className="mt-4 rounded-xl bg-blue-50 p-4 text-blue-900">
+                  <p className="font-bold">
+                    {kundenNameErmitteln(
+                      ausgewaehlterKunde,
+                    )}
+                  </p>
+
+                  <p className="mt-1 text-sm">
+                    {ausgewaehlterKunde.kundennummer}
+                    {ausgewaehlterKunde.telefon
+                      ? ` · ${ausgewaehlterKunde.telefon}`
+                      : ""}
+                  </p>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
-        <div className="rounded-2xl bg-white p-6 shadow">
-          <h2 className="text-xl font-bold text-slate-900">
+        <div className="mx-auto max-w-3xl rounded-3xl bg-white p-6 shadow sm:p-8">
+          <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
+            Schritt 1
+          </p>
+
+          <h2 className="mt-1 text-2xl font-bold text-slate-900">
             {bearbeiteteId !== null
               ? "Sammelschein bearbeiten"
               : "Sammelschein erfassen"}
@@ -1461,7 +1454,8 @@ export default function KassePage() {
                   )
                 }
                 placeholder="z. B. 6080"
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                autoFocus
+                className="mt-2 w-full rounded-xl border-2 border-blue-300 px-4 py-4 text-lg font-bold text-slate-900 outline-none focus:border-blue-700"
               />
             </label>
 
@@ -1694,7 +1688,7 @@ export default function KassePage() {
         </div>
 
         {sammelscheine.length > 0 && (
-          <div className="mt-8 rounded-2xl bg-white p-6 shadow">
+          <div className="mx-auto mt-8 max-w-3xl rounded-3xl bg-white p-6 shadow">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold text-slate-900">
