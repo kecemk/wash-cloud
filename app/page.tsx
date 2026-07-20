@@ -566,7 +566,7 @@ export default function Home() {
       <main className="min-h-screen bg-slate-50">
         <header className="bg-slate-950 px-6 py-5 text-white">
           <div className="mx-auto max-w-5xl">
-            <h1 className="text-2xl font-bold">☁ Wash Cloud</h1>
+            <h1 className="text-2xl font-bold">Washly</h1>
             <p className="mt-1 text-sm text-slate-300">Annahmestelle</p>
           </div>
         </header>
@@ -626,7 +626,7 @@ export default function Home() {
       <header className="bg-slate-950 px-6 py-5 text-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">☁ Wash Cloud</h1>
+            <h1 className="text-2xl font-bold">Washly</h1>
             <p className="mt-1 text-sm text-slate-300">
               {istAdmin ? "Chef-Dashboard" : "Mitarbeiteransicht"}
             </p>
