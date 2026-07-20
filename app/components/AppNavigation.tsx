@@ -50,6 +50,11 @@ const navigationsEintraege: NavigationsEintrag[] = [
     berechtigung: "lager_anzeigen",
   },
   {
+    href: "/chat",
+    name: "Chat",
+    berechtigung: "chat_anzeigen",
+  },
+  {
     href: "/annahmestellen",
     name: "Annahmestellen",
     berechtigung: "annahmestellen_anzeigen",
