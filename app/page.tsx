@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useBenutzer } from "./context/BenutzerContext";
 import { supabase } from "./lib/supabase";
 
@@ -17,6 +17,27 @@ type LagerartikelBestand = {
   bestand: number;
   mindestbestand: number;
 };
+
+type AnnahmestellenZugangFormular = {
+  name: string;
+  adresse: string;
+  telefon: string;
+  ansprechpartnerVorname: string;
+  ansprechpartnerNachname: string;
+  email: string;
+  startpasswort: string;
+};
+
+const leeresAnnahmestellenZugangFormular:
+  AnnahmestellenZugangFormular = {
+    name: "",
+    adresse: "",
+    telefon: "",
+    ansprechpartnerVorname: "",
+    ansprechpartnerNachname: "",
+    email: "",
+    startpasswort: "",
+  };
 
 type DatenbankLieferschein = {
   id: number;
@@ -126,6 +147,47 @@ function annahmestellenNameErmitteln(
   return annahmestellen?.name ?? "Unbekannt";
 }
 
+function sicheresStartpasswortErzeugen() {
+  const grossbuchstaben =
+    "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const kleinbuchstaben =
+    "abcdefghijkmnopqrstuvwxyz";
+  const zahlen = "23456789";
+  const sonderzeichen = "!@#$%&*-_";
+
+  const alleZeichen =
+    grossbuchstaben +
+    kleinbuchstaben +
+    zahlen +
+    sonderzeichen;
+
+  const zufaelligesZeichen = (
+    zeichen: string,
+  ) =>
+    zeichen[
+      Math.floor(
+        Math.random() * zeichen.length,
+      )
+    ];
+
+  const zeichen = [
+    zufaelligesZeichen(grossbuchstaben),
+    zufaelligesZeichen(kleinbuchstaben),
+    zufaelligesZeichen(zahlen),
+    zufaelligesZeichen(sonderzeichen),
+  ];
+
+  while (zeichen.length < 14) {
+    zeichen.push(
+      zufaelligesZeichen(alleZeichen),
+    );
+  }
+
+  return zeichen
+    .sort(() => Math.random() - 0.5)
+    .join("");
+}
+
 function tagesbeginnAlsIso() {
   const datum = new Date();
   datum.setHours(0, 0, 0, 0);
@@ -160,6 +222,36 @@ export default function Home() {
   const [dashboardWirdGeladen, setDashboardWirdGeladen] = useState(false);
   const [fehler, setFehler] = useState("");
   const [dashboardFehler, setDashboardFehler] = useState("");
+
+  const [
+    annahmestellenZugangFormular,
+    setAnnahmestellenZugangFormular,
+  ] = useState<AnnahmestellenZugangFormular>(
+    leeresAnnahmestellenZugangFormular,
+  );
+
+  const [
+    annahmestelleMitZugangWirdGespeichert,
+    setAnnahmestelleMitZugangWirdGespeichert,
+  ] = useState(false);
+
+  const [
+    annahmestellenZugangFehler,
+    setAnnahmestellenZugangFehler,
+  ] = useState("");
+
+  const [
+    annahmestellenZugangErfolg,
+    setAnnahmestellenZugangErfolg,
+  ] = useState("");
+
+  const [
+    letzterErstellterZugang,
+    setLetzterErstellterZugang,
+  ] = useState<{
+    email: string;
+    startpasswort: string;
+  } | null>(null);
 
   const darfDashboardAnzeigen =
     hatAktuellerBenutzerBerechtigung("dashboard_anzeigen");
@@ -419,6 +511,197 @@ export default function Home() {
     };
   }, [darfDashboardAnzeigen, istAdmin]);
 
+  function annahmestellenZugangFeldAendern(
+    feld: keyof AnnahmestellenZugangFormular,
+    wert: string,
+  ) {
+    setAnnahmestellenZugangFormular(
+      (aktuellesFormular) => ({
+        ...aktuellesFormular,
+        [feld]: wert,
+      }),
+    );
+
+    setAnnahmestellenZugangFehler("");
+    setAnnahmestellenZugangErfolg("");
+    setLetzterErstellterZugang(null);
+  }
+
+  async function annahmestelleMitZugangAnlegen(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    if (
+      annahmestelleMitZugangWirdGespeichert
+    ) {
+      return;
+    }
+
+    const name =
+      annahmestellenZugangFormular.name.trim();
+
+    const email =
+      annahmestellenZugangFormular.email
+        .trim()
+        .toLowerCase();
+
+    const startpasswort =
+      annahmestellenZugangFormular.startpasswort;
+
+    if (!name) {
+      setAnnahmestellenZugangFehler(
+        "Bitte gib den Namen der Annahmestelle ein.",
+      );
+      return;
+    }
+
+    if (
+      !email ||
+      !email.includes("@")
+    ) {
+      setAnnahmestellenZugangFehler(
+        "Bitte gib eine gültige E-Mail-Adresse ein.",
+      );
+      return;
+    }
+
+    if (
+      startpasswort.length < 10 ||
+      !/[A-Z]/.test(startpasswort) ||
+      !/[a-z]/.test(startpasswort) ||
+      !/\d/.test(startpasswort)
+    ) {
+      setAnnahmestellenZugangFehler(
+        "Das Startpasswort muss mindestens 10 Zeichen lang sein und Großbuchstaben, Kleinbuchstaben sowie eine Zahl enthalten.",
+      );
+      return;
+    }
+
+    setAnnahmestelleMitZugangWirdGespeichert(
+      true,
+    );
+    setAnnahmestellenZugangFehler("");
+    setAnnahmestellenZugangErfolg("");
+    setLetzterErstellterZugang(null);
+
+    try {
+      const {
+        data: sitzungsDaten,
+        error: sitzungsFehler,
+      } = await supabase.auth.getSession();
+
+      if (
+        sitzungsFehler ||
+        !sitzungsDaten.session
+      ) {
+        throw new Error(
+          "Deine Anmeldung ist abgelaufen. Bitte melde dich erneut an.",
+        );
+      }
+
+      const antwort = await fetch(
+        "/api/annahmestellen/mit-zugang",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+            Authorization:
+              `Bearer ${sitzungsDaten.session.access_token}`,
+          },
+          body: JSON.stringify({
+            name,
+            adresse:
+              annahmestellenZugangFormular.adresse.trim(),
+            telefon:
+              annahmestellenZugangFormular.telefon.trim(),
+            ansprechpartnerVorname:
+              annahmestellenZugangFormular.ansprechpartnerVorname.trim(),
+            ansprechpartnerNachname:
+              annahmestellenZugangFormular.ansprechpartnerNachname.trim(),
+            email,
+            startpasswort,
+          }),
+        },
+      );
+
+      const antwortDaten: unknown =
+        await antwort.json();
+
+      if (!antwort.ok) {
+        const apiFehler =
+          typeof antwortDaten ===
+            "object" &&
+          antwortDaten !== null &&
+          "fehler" in antwortDaten &&
+          typeof antwortDaten.fehler ===
+            "string"
+            ? antwortDaten.fehler
+            : "Annahmestelle und Zugang konnten nicht angelegt werden.";
+
+        throw new Error(apiFehler);
+      }
+
+      if (
+        typeof antwortDaten !== "object" ||
+        antwortDaten === null ||
+        !("annahmestelle" in antwortDaten) ||
+        typeof antwortDaten.annahmestelle !==
+          "object" ||
+        antwortDaten.annahmestelle === null
+      ) {
+        throw new Error(
+          "Der Server hat keine gültigen Annahmestellendaten zurückgegeben.",
+        );
+      }
+
+      const neueAnnahmestelle =
+        antwortDaten.annahmestelle as Annahmestelle;
+
+      setAnnahmestellen(
+        (aktuelleAnnahmestellen) =>
+          [
+            ...aktuelleAnnahmestellen,
+            neueAnnahmestelle,
+          ].sort((erste, zweite) =>
+            erste.name.localeCompare(
+              zweite.name,
+              "de",
+            ),
+          ),
+      );
+
+      setLetzterErstellterZugang({
+        email,
+        startpasswort,
+      });
+
+      setAnnahmestellenZugangErfolg(
+        "Annahmestelle und Zugang wurden erfolgreich angelegt. Bitte gib die unten angezeigten Zugangsdaten sicher an die Person weiter.",
+      );
+
+      setAnnahmestellenZugangFormular(
+        leeresAnnahmestellenZugangFormular,
+      );
+    } catch (unbekannterFehler) {
+      console.error(
+        "Annahmestelle und Zugang konnten nicht angelegt werden:",
+        unbekannterFehler,
+      );
+
+      setAnnahmestellenZugangFehler(
+        unbekannterFehler instanceof Error
+          ? unbekannterFehler.message
+          : "Annahmestelle und Zugang konnten nicht angelegt werden.",
+      );
+    } finally {
+      setAnnahmestelleMitZugangWirdGespeichert(
+        false,
+      );
+    }
+  }
+
   if (benutzerWerdenGeladen) {
     return (
       <main className="min-h-screen bg-slate-50 px-6 py-10">
@@ -617,6 +900,276 @@ export default function Home() {
                   {kennzahlen.gelieferteLieferscheine}
                 </p>
               </Link>
+            </div>
+
+            <div className="mt-8 rounded-2xl bg-white p-6 shadow">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
+                    Schnelle Einrichtung
+                  </p>
+
+                  <h3 className="mt-1 text-2xl font-bold text-slate-950">
+                    Neue Annahmestelle mit Zugang
+                  </h3>
+
+                  <p className="mt-2 max-w-3xl text-sm text-slate-600">
+                    Lege die Annahmestelle und den passenden Login in einem Schritt an.
+                    Die Person meldet sich danach mit ihrer E-Mail-Adresse und dem
+                    Startpasswort an.
+                  </p>
+                </div>
+
+                <Link
+                  href="/benutzer"
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700"
+                >
+                  Benutzerverwaltung
+                </Link>
+              </div>
+
+              {annahmestellenZugangFehler && (
+                <div className="mt-5 rounded-xl bg-red-100 p-4 text-red-800">
+                  <p className="font-bold">
+                    Einrichtung fehlgeschlagen
+                  </p>
+
+                  <p className="mt-1 text-sm">
+                    {annahmestellenZugangFehler}
+                  </p>
+                </div>
+              )}
+
+              {annahmestellenZugangErfolg && (
+                <div className="mt-5 rounded-xl bg-green-100 p-4 text-green-800">
+                  <p className="font-bold">
+                    Einrichtung erfolgreich
+                  </p>
+
+                  <p className="mt-1 text-sm">
+                    {annahmestellenZugangErfolg}
+                  </p>
+                </div>
+              )}
+
+              {letzterErstellterZugang && (
+                <div className="mt-5 rounded-xl border-2 border-blue-200 bg-blue-50 p-5">
+                  <p className="font-bold text-blue-900">
+                    Zugangsdaten jetzt notieren
+                  </p>
+
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                        E-Mail-Adresse
+                      </p>
+
+                      <p className="mt-1 break-all font-bold text-slate-950">
+                        {letzterErstellterZugang.email}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                        Startpasswort
+                      </p>
+
+                      <p className="mt-1 break-all font-bold text-slate-950">
+                        {letzterErstellterZugang.startpasswort}
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-sm text-blue-900">
+                    Das Passwort wird aus Sicherheitsgründen nicht dauerhaft in
+                    der normalen Benutzertabelle gespeichert.
+                  </p>
+                </div>
+              )}
+
+              <form
+                onSubmit={
+                  annahmestelleMitZugangAnlegen
+                }
+                className="mt-6 grid gap-4 lg:grid-cols-2"
+              >
+                <label className="block">
+                  <span className="text-sm font-medium text-slate-700">
+                    Name der Annahmestelle
+                  </span>
+
+                  <input
+                    type="text"
+                    value={
+                      annahmestellenZugangFormular.name
+                    }
+                    onChange={(event) =>
+                      annahmestellenZugangFeldAendern(
+                        "name",
+                        event.target.value,
+                      )
+                    }
+                    placeholder="zum Beispiel Reinigung Berlin Mitte"
+                    required
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-medium text-slate-700">
+                    Telefonnummer
+                  </span>
+
+                  <input
+                    type="tel"
+                    value={
+                      annahmestellenZugangFormular.telefon
+                    }
+                    onChange={(event) =>
+                      annahmestellenZugangFeldAendern(
+                        "telefon",
+                        event.target.value,
+                      )
+                    }
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                  />
+                </label>
+
+                <label className="block lg:col-span-2">
+                  <span className="text-sm font-medium text-slate-700">
+                    Adresse
+                  </span>
+
+                  <input
+                    type="text"
+                    value={
+                      annahmestellenZugangFormular.adresse
+                    }
+                    onChange={(event) =>
+                      annahmestellenZugangFeldAendern(
+                        "adresse",
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Straße, Hausnummer, PLZ und Ort"
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-medium text-slate-700">
+                    Ansprechpartner Vorname
+                  </span>
+
+                  <input
+                    type="text"
+                    value={
+                      annahmestellenZugangFormular.ansprechpartnerVorname
+                    }
+                    onChange={(event) =>
+                      annahmestellenZugangFeldAendern(
+                        "ansprechpartnerVorname",
+                        event.target.value,
+                      )
+                    }
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-medium text-slate-700">
+                    Ansprechpartner Nachname
+                  </span>
+
+                  <input
+                    type="text"
+                    value={
+                      annahmestellenZugangFormular.ansprechpartnerNachname
+                    }
+                    onChange={(event) =>
+                      annahmestellenZugangFeldAendern(
+                        "ansprechpartnerNachname",
+                        event.target.value,
+                      )
+                    }
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-medium text-slate-700">
+                    E-Mail-Adresse für den Login
+                  </span>
+
+                  <input
+                    type="email"
+                    value={
+                      annahmestellenZugangFormular.email
+                    }
+                    onChange={(event) =>
+                      annahmestellenZugangFeldAendern(
+                        "email",
+                        event.target.value,
+                      )
+                    }
+                    placeholder="annahme@firma.de"
+                    required
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-medium text-slate-700">
+                    Startpasswort
+                  </span>
+
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="text"
+                      value={
+                        annahmestellenZugangFormular.startpasswort
+                      }
+                      onChange={(event) =>
+                        annahmestellenZugangFeldAendern(
+                          "startpasswort",
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Mindestens 10 Zeichen"
+                      autoComplete="new-password"
+                      required
+                      className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        annahmestellenZugangFeldAendern(
+                          "startpasswort",
+                          sicheresStartpasswortErzeugen(),
+                        )
+                      }
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700"
+                    >
+                      Erzeugen
+                    </button>
+                  </div>
+                </label>
+
+                <div className="lg:col-span-2">
+                  <button
+                    type="submit"
+                    disabled={
+                      annahmestelleMitZugangWirdGespeichert
+                    }
+                    className="w-full rounded-xl bg-blue-700 px-5 py-4 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {annahmestelleMitZugangWirdGespeichert
+                      ? "Annahmestelle und Zugang werden angelegt ..."
+                      : "Annahmestelle und Zugang erstellen"}
+                  </button>
+                </div>
+              </form>
             </div>
 
             <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_0.6fr]">
