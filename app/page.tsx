@@ -222,6 +222,8 @@ export default function Home() {
   const [dashboardWirdGeladen, setDashboardWirdGeladen] = useState(false);
   const [fehler, setFehler] = useState("");
   const [dashboardFehler, setDashboardFehler] = useState("");
+  const [kassenAuswahlIstOffen, setKassenAuswahlIstOffen] =
+    useState(false);
 
   const [
     annahmestellenZugangFormular,
@@ -773,6 +775,110 @@ export default function Home() {
       </header>
 
       <section className="mx-auto max-w-7xl px-6 py-10">
+        {darfKasseAnzeigen && (
+          <div className="mb-10">
+            <div className="mx-auto max-w-3xl rounded-3xl bg-white p-6 text-center shadow sm:p-10">
+              <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
+                Schneller Start
+              </p>
+
+              <h2 className="mt-2 text-3xl font-bold text-slate-950">
+                Neue Kasse öffnen
+              </h2>
+
+              <p className="mx-auto mt-3 max-w-xl text-slate-600">
+                Starte einen neuen Vorgang, wähle die Annahmestelle und gib
+                anschließend die Sammelscheine ein.
+              </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setKassenAuswahlIstOffen(
+                    (istOffen) => !istOffen,
+                  )
+                }
+                className="mx-auto mt-7 flex h-28 w-28 items-center justify-center rounded-full bg-blue-700 text-7xl font-light leading-none text-white shadow-lg transition hover:scale-105 hover:bg-blue-800"
+                aria-label="Neue Kasse öffnen"
+              >
+                +
+              </button>
+
+              <p className="mt-4 font-bold text-slate-900">
+                {kassenAuswahlIstOffen
+                  ? "Auswahl schließen"
+                  : "Neue Kasse"}
+              </p>
+            </div>
+
+            {kassenAuswahlIstOffen && (
+              <div className="mx-auto mt-6 max-w-5xl rounded-3xl border border-slate-200 bg-white p-6 shadow">
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold text-slate-950">
+                    Annahmestelle auswählen
+                  </h3>
+
+                  <p className="mt-2 text-slate-600">
+                    Danach öffnet sich direkt die vorhandene Kasse.
+                  </p>
+                </div>
+
+                {annahmestellenWerdenGeladen && (
+                  <div className="mt-6 rounded-2xl bg-slate-100 p-5 text-center text-slate-600">
+                    Annahmestellen werden geladen ...
+                  </div>
+                )}
+
+                {fehler && (
+                  <div className="mt-6 rounded-2xl bg-red-100 p-5 text-red-800">
+                    {fehler}
+                  </div>
+                )}
+
+                {!annahmestellenWerdenGeladen &&
+                  !fehler &&
+                  annahmestellen.length === 0 && (
+                    <div className="mt-6 rounded-2xl bg-orange-100 p-5 text-center text-orange-800">
+                      Es wurde keine aktive Annahmestelle gefunden.
+                    </div>
+                  )}
+
+                {!annahmestellenWerdenGeladen &&
+                  !fehler &&
+                  annahmestellen.length > 0 && (
+                    <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {annahmestellen.map(
+                        (annahmestelle) => (
+                          <Link
+                            key={annahmestelle.id}
+                            href={`/kasse?annahmestelle=${annahmestelle.id}&name=${encodeURIComponent(
+                              annahmestelle.name,
+                            )}`}
+                            className="rounded-2xl border-2 border-slate-200 bg-white p-5 text-left transition hover:border-blue-600 hover:shadow-md"
+                          >
+                            <h4 className="text-lg font-bold text-slate-950">
+                              {annahmestelle.name}
+                            </h4>
+
+                            {annahmestelle.adresse && (
+                              <p className="mt-2 text-sm text-slate-600">
+                                {annahmestelle.adresse}
+                              </p>
+                            )}
+
+                            <div className="mt-5 font-bold text-blue-700">
+                              Auswählen →
+                            </div>
+                          </Link>
+                        ),
+                      )}
+                    </div>
+                  )}
+              </div>
+            )}
+          </div>
+        )}
+
         {istAdmin && (
           <>
             <div>
@@ -1255,46 +1361,6 @@ export default function Home() {
             {darfLagerAnzeigen && <Link href="/lager" className="rounded-2xl bg-white p-5 shadow"><h3 className="text-xl font-bold">Lager</h3></Link>}
           </div>
         </div>
-
-        {darfKasseAnzeigen && (
-          <>
-            <div className="mt-10">
-              <h2 className="text-3xl font-bold text-slate-900">Annahmestelle auswählen</h2>
-              <p className="mt-2 text-slate-600">
-                Wähle die Annahmestelle aus, für die ein neuer Lieferschein erstellt werden soll.
-              </p>
-            </div>
-
-            {annahmestellenWerdenGeladen && (
-              <div className="mt-8 rounded-2xl bg-white p-6 shadow">
-                Annahmestellen werden geladen ...
-              </div>
-            )}
-
-            {fehler && (
-              <div className="mt-8 rounded-2xl bg-red-100 p-5 text-red-800">
-                {fehler}
-              </div>
-            )}
-
-            {!annahmestellenWerdenGeladen && !fehler && annahmestellen.length > 0 && (
-              <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-                {annahmestellen.map((annahmestelle) => (
-                  <Link
-                    key={annahmestelle.id}
-                    href={`/kasse?annahmestelle=${annahmestelle.id}&name=${encodeURIComponent(annahmestelle.name)}`}
-                    className="rounded-2xl bg-white p-6 shadow"
-                  >
-                    <h3 className="text-xl font-bold text-slate-900">{annahmestelle.name}</h3>
-                    {annahmestelle.adresse && <p className="mt-3 text-sm text-slate-600">{annahmestelle.adresse}</p>}
-                    {annahmestelle.telefon && <p className="mt-1 text-sm text-slate-500">Telefon: {annahmestelle.telefon}</p>}
-                    <div className="mt-6 font-bold text-blue-600">Kasse öffnen →</div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </>
-        )}
 
         {(darfBenutzerAnzeigen || darfAnnahmestellenAnzeigen) && (
           <div className="mt-10 flex flex-wrap gap-3">
