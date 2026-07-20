@@ -42,6 +42,13 @@ type LetzterLieferschein = {
   annahmestelle: string;
 };
 
+type DatenbankRechnung = {
+  id: number;
+  status: string;
+  gesamtbetrag: number | string | null;
+  faellig_am: string | null;
+};
+
 type DashboardKennzahlen = {
   umsatzHeute: number;
   umsatzMonat: number;
@@ -52,6 +59,9 @@ type DashboardKennzahlen = {
   lieferungenGesamt: number;
   kundenGesamt: number;
   rechnungenGesamt: number;
+  offeneRechnungen: number;
+  ueberfaelligeRechnungen: number;
+  offenerRechnungsbetrag: number;
 };
 
 const leereKennzahlen: DashboardKennzahlen = {
@@ -64,6 +74,9 @@ const leereKennzahlen: DashboardKennzahlen = {
   lieferungenGesamt: 0,
   kundenGesamt: 0,
   rechnungenGesamt: 0,
+  offeneRechnungen: 0,
+  ueberfaelligeRechnungen: 0,
+  offenerRechnungsbetrag: 0,
 };
 
 function zahlUmwandeln(
@@ -285,7 +298,9 @@ export default function Home() {
             .order("erstellt_am", { ascending: false }),
           supabase.from("lieferungen").select("id", { count: "exact", head: true }),
           supabase.from("kunden").select("id", { count: "exact", head: true }),
-          supabase.from("rechnungen").select("id", { count: "exact", head: true }),
+          supabase
+            .from("rechnungen")
+            .select("id, status, gesamtbetrag, faellig_am"),
         ]);
 
       if (!istAktiv) return;
@@ -309,6 +324,9 @@ export default function Home() {
       let lieferscheineMonat = 0;
       let fertigeLieferscheine = 0;
       let gelieferteLieferscheine = 0;
+      let offeneRechnungen = 0;
+      let ueberfaelligeRechnungen = 0;
+      let offenerRechnungsbetrag = 0;
 
       for (const lieferschein of daten) {
         const status = lieferschein.status.trim().toLowerCase();
@@ -330,6 +348,40 @@ export default function Home() {
         }
       }
 
+      const rechnungsDaten =
+        (rechnungen.data ?? []) as DatenbankRechnung[];
+
+      const jetzt = Date.now();
+
+      for (const rechnung of rechnungsDaten) {
+        const status =
+          rechnung.status.trim().toLowerCase();
+
+        if (status !== "offen") {
+          continue;
+        }
+
+        offeneRechnungen += 1;
+        offenerRechnungsbetrag += zahlUmwandeln(
+          rechnung.gesamtbetrag,
+        );
+
+        if (!rechnung.faellig_am) {
+          continue;
+        }
+
+        const faelligkeitsdatum = new Date(
+          `${rechnung.faellig_am}T23:59:59`,
+        ).getTime();
+
+        if (
+          Number.isFinite(faelligkeitsdatum) &&
+          faelligkeitsdatum < jetzt
+        ) {
+          ueberfaelligeRechnungen += 1;
+        }
+      }
+
       setKennzahlen({
         umsatzHeute,
         umsatzMonat,
@@ -339,7 +391,10 @@ export default function Home() {
         gelieferteLieferscheine,
         lieferungenGesamt: lieferungen.count ?? 0,
         kundenGesamt: kunden.count ?? 0,
-        rechnungenGesamt: rechnungen.count ?? 0,
+        rechnungenGesamt: rechnungsDaten.length,
+        offeneRechnungen,
+        ueberfaelligeRechnungen,
+        offenerRechnungsbetrag,
       });
 
       setLetzteLieferscheine(
@@ -516,10 +571,44 @@ export default function Home() {
                   {kennzahlen.kundenGesamt}
                 </p>
               </Link>
-              <Link href="/rechnungen" className="rounded-2xl bg-white p-5 shadow">
-                <p className="text-sm text-slate-500">Rechnungen</p>
-                <p className="mt-1 text-2xl font-bold text-slate-950">
-                  {kennzahlen.rechnungenGesamt}
+              <Link
+                href="/rechnungen"
+                className={`rounded-2xl p-5 shadow ${
+                  kennzahlen.ueberfaelligeRechnungen > 0
+                    ? "bg-red-50"
+                    : "bg-white"
+                }`}
+              >
+                <p className="text-sm text-slate-500">
+                  Offene Rechnungen
+                </p>
+
+                <p
+                  className={`mt-1 text-2xl font-bold ${
+                    kennzahlen.ueberfaelligeRechnungen > 0
+                      ? "text-red-700"
+                      : "text-slate-950"
+                  }`}
+                >
+                  {kennzahlen.offeneRechnungen}
+                </p>
+
+                <p className="mt-1 text-sm text-slate-600">
+                  {geldFormatieren(
+                    kennzahlen.offenerRechnungsbetrag,
+                  )}{" "}
+                  offen
+                </p>
+
+                <p
+                  className={`mt-2 text-xs font-semibold ${
+                    kennzahlen.ueberfaelligeRechnungen > 0
+                      ? "text-red-700"
+                      : "text-green-700"
+                  }`}
+                >
+                  {kennzahlen.ueberfaelligeRechnungen}{" "}
+                  überfällig
                 </p>
               </Link>
               <Link href="/lieferscheine" className="rounded-2xl bg-white p-5 shadow">
