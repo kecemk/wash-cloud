@@ -47,6 +47,26 @@ export default function SammelscheinEingangPage() {
   const [erfolg, setErfolg] =
     useState("");
 
+  const [
+    fotoWirdErkannt,
+    setFotoWirdErkannt,
+  ] = useState(false);
+
+  const [
+    ocrFortschritt,
+    setOcrFortschritt,
+  ] = useState(0);
+
+  const [
+    fotoVorschau,
+    setFotoVorschau,
+  ] = useState("");
+
+  const [
+    erkannteNummern,
+    setErkannteNummern,
+  ] = useState<string[]>([]);
+
   const ausgewaehlteAnnahmestelle =
     useMemo(
       () =>
@@ -168,6 +188,220 @@ export default function SammelscheinEingangPage() {
     sammelschein: OffenerSammelschein,
   ) {
     return sammelschein.annahmestelle_id;
+  }
+
+  async function oberenBildbereichErstellen(
+    datei: File,
+  ): Promise<Blob | File> {
+    try {
+      const bild =
+        await createImageBitmap(datei);
+
+      const ausschnittHoehe = Math.max(
+        1,
+        Math.round(bild.height * 0.45),
+      );
+
+      const zielBreite = Math.min(
+        1800,
+        Math.max(1000, bild.width),
+      );
+
+      const faktor =
+        zielBreite / bild.width;
+
+      const canvas =
+        document.createElement("canvas");
+
+      canvas.width = Math.round(
+        bild.width * faktor,
+      );
+
+      canvas.height = Math.round(
+        ausschnittHoehe * faktor,
+      );
+
+      const context =
+        canvas.getContext("2d");
+
+      if (!context) {
+        bild.close();
+        return datei;
+      }
+
+      context.drawImage(
+        bild,
+        0,
+        0,
+        bild.width,
+        ausschnittHoehe,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+
+      bild.close();
+
+      const blob =
+        await new Promise<Blob | null>(
+          (resolve) =>
+            canvas.toBlob(
+              resolve,
+              "image/jpeg",
+              0.92,
+            ),
+        );
+
+      return blob ?? datei;
+    } catch {
+      return datei;
+    }
+  }
+
+  function nummernAusTextErmitteln(
+    erkannterText: string,
+  ) {
+    const direkteTreffer =
+      erkannterText.match(
+        /\d{3,10}/g,
+      ) ?? [];
+
+    const zeilenTreffer =
+      erkannterText
+        .split(/\r?\n/)
+        .map((zeile) =>
+          zeile.replace(/\D/g, ""),
+        )
+        .filter(
+          (wert) =>
+            wert.length >= 3 &&
+            wert.length <= 10,
+        );
+
+    return Array.from(
+      new Set([
+        ...direkteTreffer,
+        ...zeilenTreffer,
+      ]),
+    );
+  }
+
+  async function fotoAuswerten(
+    datei: File,
+  ) {
+    if (!datei.type.startsWith("image/")) {
+      alert(
+        "Bitte ein Foto oder eine Bilddatei auswählen.",
+      );
+      return;
+    }
+
+    setFotoWirdErkannt(true);
+    setOcrFortschritt(0);
+    setFehler("");
+    setErfolg("");
+    setErkannteNummern([]);
+
+    const vorschauUrl =
+      URL.createObjectURL(datei);
+
+    setFotoVorschau(
+      (vorherigeVorschau) => {
+        if (vorherigeVorschau) {
+          URL.revokeObjectURL(
+            vorherigeVorschau,
+          );
+        }
+
+        return vorschauUrl;
+      },
+    );
+
+    try {
+      const {
+        createWorker,
+        PSM,
+      } = await import(
+        "tesseract.js"
+      );
+
+      const worker =
+        await createWorker(
+          "eng",
+          1,
+          {
+            logger: (meldung) => {
+              if (
+                typeof meldung.progress ===
+                "number"
+              ) {
+                setOcrFortschritt(
+                  Math.round(
+                    meldung.progress * 100,
+                  ),
+                );
+              }
+            },
+          },
+        );
+
+      await worker.setParameters({
+        tessedit_char_whitelist:
+          "0123456789",
+        tessedit_pageseg_mode:
+          PSM.SPARSE_TEXT,
+      });
+
+      const bildAusschnitt =
+        await oberenBildbereichErstellen(
+          datei,
+        );
+
+      const ergebnis =
+        await worker.recognize(
+          bildAusschnitt,
+        );
+
+      await worker.terminate();
+
+      const gefundeneNummern =
+        nummernAusTextErmitteln(
+          ergebnis.data.text,
+        );
+
+      setErkannteNummern(
+        gefundeneNummern,
+      );
+
+      if (
+        gefundeneNummern.length === 0
+      ) {
+        setFehler(
+          "Es wurde keine eindeutige Nummer erkannt. Du kannst die Nummer weiterhin manuell eingeben oder ein neues Foto aufnehmen.",
+        );
+        return;
+      }
+
+      setNummer(
+        gefundeneNummern[0],
+      );
+
+      setErfolg(
+        `Erkannte Nummer: ${gefundeneNummern[0]}. Bitte vor dem Speichern prüfen.`,
+      );
+    } catch (error) {
+      const meldung =
+        error instanceof Error
+          ? error.message
+          : "Unbekannter Fehler";
+
+      setFehler(
+        `Die Fotoerkennung ist fehlgeschlagen: ${meldung}`,
+      );
+    } finally {
+      setFotoWirdErkannt(false);
+    }
   }
 
   async function nummerSpeichern() {
@@ -373,6 +607,112 @@ export default function SammelscheinEingangPage() {
                     )}
                   </select>
                 </label>
+
+                <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-slate-900">
+                        Nummer per Foto erkennen
+                      </p>
+
+                      <p className="mt-1 text-sm text-slate-600">
+                        Fotografiere den oberen Bereich des Sammelscheins möglichst gerade und gut beleuchtet.
+                      </p>
+                    </div>
+
+                    <label className={`cursor-pointer rounded-xl px-5 py-3 font-bold text-white ${
+                      fotoWirdErkannt
+                        ? "bg-slate-400"
+                        : "bg-blue-700"
+                    }`}>
+                      {fotoWirdErkannt
+                        ? `Erkennung ${ocrFortschritt} %`
+                        : "📷 Foto aufnehmen"}
+
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        disabled={
+                          fotoWirdErkannt
+                        }
+                        onChange={(event) => {
+                          const datei =
+                            event.target
+                              .files?.[0];
+
+                          if (datei) {
+                            void fotoAuswerten(
+                              datei,
+                            );
+                          }
+
+                          event.target.value =
+                            "";
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  {fotoWirdErkannt && (
+                    <div className="mt-4 h-3 overflow-hidden rounded-full bg-white">
+                      <div
+                        className="h-full bg-blue-700 transition-all"
+                        style={{
+                          width: `${ocrFortschritt}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {fotoVorschau && (
+                    <img
+                      src={fotoVorschau}
+                      alt="Aufgenommener Sammelschein"
+                      className="mt-4 max-h-64 w-full rounded-xl object-contain"
+                    />
+                  )}
+
+                  {erkannteNummern.length >
+                    1 && (
+                    <div className="mt-4">
+                      <p className="text-sm font-semibold text-slate-700">
+                        Mehrere Nummern erkannt – richtige Nummer auswählen:
+                      </p>
+
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {erkannteNummern.map(
+                          (
+                            erkannteNummer,
+                          ) => (
+                            <button
+                              key={
+                                erkannteNummer
+                              }
+                              type="button"
+                              onClick={() =>
+                                setNummer(
+                                  erkannteNummer,
+                                )
+                              }
+                              className={`rounded-xl border px-4 py-2 font-bold ${
+                                nummer ===
+                                erkannteNummer
+                                  ? "border-blue-700 bg-blue-700 text-white"
+                                  : "border-blue-300 bg-white text-blue-800"
+                              }`}
+                            >
+                              {
+                                erkannteNummer
+                              }
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                   <input
