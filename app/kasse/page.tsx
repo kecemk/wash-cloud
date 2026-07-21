@@ -1447,6 +1447,7 @@ export default function KassePage() {
 
               <input
                 type="text"
+                inputMode="numeric"
                 value={nummer}
                 onChange={(event) =>
                   setNummer(
