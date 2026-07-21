@@ -37,6 +37,13 @@ type ArtikelAuswahl = {
   name: string;
 };
 
+type OffenerSammelschein = {
+  id: number;
+  annahmestelle_id: number;
+  nummer: string;
+  status: "offen" | "erledigt";
+};
+
 type PositionFotos = Record<number, File[]>;
 
 const MAXIMALE_FOTOGROESSE =
@@ -150,6 +157,16 @@ export default function KassePage() {
     artikelFehler,
     setArtikelFehler,
   ] = useState("");
+
+  const [
+    offeneSammelscheine,
+    setOffeneSammelscheine,
+  ] = useState<OffenerSammelschein[]>([]);
+
+  const [
+    offeneSammelscheineWerdenGeladen,
+    setOffeneSammelscheineWerdenGeladen,
+  ] = useState(false);
 
   const [
     freierArtikel,
@@ -268,6 +285,51 @@ export default function KassePage() {
 
     void artikelLaden();
   }, []);
+
+  useEffect(() => {
+    async function offeneSammelscheineLaden() {
+      if (!ausgewaehlteAnnahmestelleId) {
+        setOffeneSammelscheine([]);
+        return;
+      }
+
+      setOffeneSammelscheineWerdenGeladen(true);
+
+      const { data, error } =
+        await supabase
+          .from("offene_sammelscheine")
+          .select(
+            "id, annahmestelle_id, nummer, status",
+          )
+          .eq(
+            "annahmestelle_id",
+            Number(ausgewaehlteAnnahmestelleId),
+          )
+          .eq("status", "offen")
+          .order("erstellt_am", {
+            ascending: true,
+          });
+
+      if (error) {
+        console.error(
+          "Offene Sammelscheine konnten nicht geladen werden:",
+          error,
+        );
+        setOffeneSammelscheine([]);
+        setOffeneSammelscheineWerdenGeladen(false);
+        return;
+      }
+
+      setOffeneSammelscheine(
+        (data as OffenerSammelschein[] | null) ??
+          [],
+      );
+
+      setOffeneSammelscheineWerdenGeladen(false);
+    }
+
+    void offeneSammelscheineLaden();
+  }, [ausgewaehlteAnnahmestelleId]);
 
   useEffect(() => {
     async function kundenLaden() {
@@ -1548,6 +1610,58 @@ export default function KassePage() {
           )}
 
           <div className="mt-6 grid gap-5 md:grid-cols-3">
+            <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-bold text-slate-900">
+                    Offene Sammelscheine
+                  </p>
+
+                  <p className="text-sm text-slate-600">
+                    Nummer anklicken und anschließend Artikel, Menge und Preis eingeben.
+                  </p>
+                </div>
+
+                <span className="rounded-full bg-white px-3 py-1 text-sm font-bold text-blue-800">
+                  {offeneSammelscheine.length} offen
+                </span>
+              </div>
+
+              {offeneSammelscheineWerdenGeladen ? (
+                <p className="mt-4 text-sm text-slate-600">
+                  Offene Nummern werden geladen ...
+                </p>
+              ) : offeneSammelscheine.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-600">
+                  Für diese Annahmestelle gibt es aktuell keine offenen Nummern.
+                </p>
+              ) : (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {offeneSammelscheine.map(
+                    (offenerSammelschein) => (
+                      <button
+                        key={offenerSammelschein.id}
+                        type="button"
+                        onClick={() =>
+                          setNummer(
+                            offenerSammelschein.nummer,
+                          )
+                        }
+                        className={`rounded-xl border px-4 py-3 text-base font-bold ${
+                          nummer ===
+                          offenerSammelschein.nummer
+                            ? "border-blue-700 bg-blue-700 text-white"
+                            : "border-blue-300 bg-white text-blue-800"
+                        }`}
+                      >
+                        {offenerSammelschein.nummer}
+                      </button>
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
+
             <label className="block">
               <span className="text-sm font-medium text-slate-700">
                 Sammelschein-Nummer
