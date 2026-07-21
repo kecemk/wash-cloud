@@ -31,6 +31,11 @@ const hauptNavigation: NavigationsEintrag[] = [
     berechtigung: "lieferscheine_anzeigen",
   },
   {
+    href: "/sammelschein-eingang",
+    name: "Wareneingang",
+    berechtigung: "kasse_anzeigen",
+  },
+  {
     href: "/chat",
     name: "Chat",
     berechtigung: "chat_anzeigen",
