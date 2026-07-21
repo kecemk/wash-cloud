@@ -789,7 +789,7 @@ export default function KassePage() {
     setBearbeiteteId(null);
   }
 
-  function sammelscheinSpeichern() {
+  async function sammelscheinSpeichern() {
     const bereinigteNummer =
       nummer.trim();
 
@@ -834,6 +834,99 @@ export default function KassePage() {
         "Bitte einen gültigen Gesamtpreis eingeben.",
       );
       return;
+    }
+
+    const vorherigeNummer =
+      bearbeiteteId !== null
+        ? sammelscheine.find(
+            (sammelschein) =>
+              sammelschein.id ===
+              bearbeiteteId,
+          )?.nummer ?? null
+        : null;
+
+    if (
+      vorherigeNummer &&
+      vorherigeNummer !== bereinigteNummer
+    ) {
+      const { error:
+        vorherigeNummerFehler } =
+        await supabase
+          .from("offene_sammelscheine")
+          .update({
+            status: "offen",
+            erledigt_am: null,
+          })
+          .eq(
+            "annahmestelle_id",
+            ausgewaehlteAnnahmestelleId,
+          )
+          .eq("nummer", vorherigeNummer)
+          .eq(
+            "status",
+            "in_bearbeitung",
+          );
+
+      if (vorherigeNummerFehler) {
+        setSupabaseFehler(
+          vorherigeNummerFehler.message,
+        );
+        return;
+      }
+    }
+
+    const { error:
+      statusFehler } =
+      await supabase
+        .from("offene_sammelscheine")
+        .update({
+          status: "in_bearbeitung",
+          erledigt_am: null,
+        })
+        .eq(
+          "annahmestelle_id",
+          ausgewaehlteAnnahmestelleId,
+        )
+        .eq("nummer", bereinigteNummer)
+        .eq("status", "offen");
+
+    if (statusFehler) {
+      setSupabaseFehler(
+        `Die offene Nummer konnte nicht reserviert werden: ${statusFehler.message}`,
+      );
+      return;
+    }
+
+    setOffeneSammelscheine(
+      (
+        aktuelleOffeneSammelscheine,
+      ) =>
+        aktuelleOffeneSammelscheine.filter(
+          (offenerSammelschein) =>
+            offenerSammelschein.nummer !==
+            bereinigteNummer,
+        ),
+    );
+
+    if (
+      vorherigeNummer &&
+      vorherigeNummer !== bereinigteNummer
+    ) {
+      setOffeneSammelscheine(
+        (
+          aktuelleOffeneSammelscheine,
+        ) => [
+          ...aktuelleOffeneSammelscheine,
+          {
+            id:
+              Date.now(),
+            annahmestelle_id:
+              ausgewaehlteAnnahmestelleId,
+            nummer: vorherigeNummer,
+            status: "offen",
+          },
+        ],
+      );
     }
 
     if (bearbeiteteId !== null) {
@@ -913,7 +1006,7 @@ export default function KassePage() {
     formularLeeren();
   }
 
-  function sammelscheinLoeschen(
+  async function sammelscheinLoeschen(
     id: number,
   ) {
     if (
@@ -929,6 +1022,50 @@ export default function KassePage() {
         (sammelschein) =>
           sammelschein.id === id,
       );
+
+    if (geloeschterSammelschein) {
+      const { data, error } =
+        await supabase
+          .from("offene_sammelscheine")
+          .update({
+            status: "offen",
+            erledigt_am: null,
+          })
+          .eq(
+            "annahmestelle_id",
+            ausgewaehlteAnnahmestelleId,
+          )
+          .eq(
+            "nummer",
+            geloeschterSammelschein.nummer,
+          )
+          .eq(
+            "status",
+            "in_bearbeitung",
+          )
+          .select(
+            "id, annahmestelle_id, nummer, status",
+          )
+          .maybeSingle();
+
+      if (error) {
+        setSupabaseFehler(
+          `Die Nummer konnte nicht wieder freigegeben werden: ${error.message}`,
+        );
+        return;
+      }
+
+      if (data) {
+        setOffeneSammelscheine(
+          (
+            aktuelleOffeneSammelscheine,
+          ) => [
+            data as OffenerSammelschein,
+            ...aktuelleOffeneSammelscheine,
+          ],
+        );
+      }
+    }
 
     setSammelscheine(
       (aktuelleSammelscheine) =>
@@ -1309,7 +1446,13 @@ export default function KassePage() {
               "annahmestelle_id",
               ausgewaehlteAnnahmestelleId,
             )
-            .eq("status", "offen")
+            .in(
+              "status",
+              [
+                "offen",
+                "in_bearbeitung",
+              ],
+            )
             .in(
               "nummer",
               verwendeteSammelscheinNummern,
@@ -1960,8 +2103,8 @@ export default function KassePage() {
 
           <button
             type="button"
-            onClick={
-              sammelscheinSpeichern
+            onClick={() =>
+              void sammelscheinSpeichern()
             }
             className="mt-6 w-full rounded-xl bg-green-600 px-5 py-4 text-lg font-bold text-white"
           >
