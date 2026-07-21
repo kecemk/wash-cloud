@@ -1284,6 +1284,58 @@ export default function KassePage() {
         }
       }
 
+      const verwendeteSammelscheinNummern =
+        sammelscheine.map(
+          (sammelschein) =>
+            sammelschein.nummer,
+        );
+
+      if (
+        verwendeteSammelscheinNummern.length >
+        0
+      ) {
+        const { error:
+          offeneSammelscheineFehler } =
+          await supabase
+            .from(
+              "offene_sammelscheine",
+            )
+            .update({
+              status: "erledigt",
+              erledigt_am:
+                fertiggestelltAm,
+            })
+            .eq(
+              "annahmestelle_id",
+              ausgewaehlteAnnahmestelleId,
+            )
+            .eq("status", "offen")
+            .in(
+              "nummer",
+              verwendeteSammelscheinNummern,
+            );
+
+        if (
+          offeneSammelscheineFehler
+        ) {
+          throw new Error(
+            `Die offenen Sammelscheine konnten nicht abgeschlossen werden: ${offeneSammelscheineFehler.message}`,
+          );
+        }
+
+        setOffeneSammelscheine(
+          (
+            aktuelleOffeneSammelscheine,
+          ) =>
+            aktuelleOffeneSammelscheine.filter(
+              (offenerSammelschein) =>
+                !verwendeteSammelscheinNummern.includes(
+                  offenerSammelschein.nummer,
+                ),
+            ),
+        );
+      }
+
       const fertigerLieferschein:
         FertigerLieferschein = {
           id: neueLieferscheinId,
