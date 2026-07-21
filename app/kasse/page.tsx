@@ -1466,6 +1466,7 @@ export default function KassePage() {
 
               <input
                 type="number"
+                inputMode="numeric"
                 min="1"
                 value={menge}
                 onChange={(event) =>
@@ -1651,6 +1652,7 @@ export default function KassePage() {
 
             <input
               type="text"
+              inputMode="decimal"
               value={preis}
               onChange={(event) =>
                 setPreis(
