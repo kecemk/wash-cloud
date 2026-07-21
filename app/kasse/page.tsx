@@ -131,6 +131,11 @@ export default function KassePage() {
   const [artikel, setArtikel] =
     useState("Hemd");
 
+  const [
+    freierArtikel,
+    setFreierArtikel,
+  ] = useState("");
+
   const [preis, setPreis] =
     useState("");
 
@@ -462,18 +467,31 @@ export default function KassePage() {
       return;
     }
 
+    const ausgewaehlterArtikel =
+      artikel === "Sonstiges"
+        ? freierArtikel.trim()
+        : artikel;
+
+    if (!ausgewaehlterArtikel) {
+      alert(
+        "Bitte gib die Bezeichnung des Artikels ein.",
+      );
+      return;
+    }
+
     setPositionen(
       (aktuellePositionen) => [
         ...aktuellePositionen,
         {
           id: Date.now(),
           menge: mengeAlsZahl,
-          artikel,
+          artikel: ausgewaehlterArtikel,
         },
       ],
     );
 
     setMenge("");
+    setFreierArtikel("");
     setErfolgsmeldung("");
     setSupabaseFehler("");
   }
@@ -631,6 +649,7 @@ export default function KassePage() {
     setNummer("");
     setMenge("");
     setArtikel("Hemd");
+    setFreierArtikel("");
     setPreis("");
     setPositionen([]);
     setBearbeiteteId(null);
@@ -746,6 +765,7 @@ export default function KassePage() {
 
     setMenge("");
     setArtikel("Hemd");
+    setFreierArtikel("");
     setErfolgsmeldung("");
     setSupabaseFehler("");
 
@@ -1517,9 +1537,33 @@ export default function KassePage() {
                 <option value="Kleid">
                   Kleid
                 </option>
+
+                <option value="Sonstiges">
+                  Sonstiges / selbst eingeben
+                </option>
               </select>
             </label>
           </div>
+
+          {artikel === "Sonstiges" && (
+            <label className="mt-5 block">
+              <span className="text-sm font-medium text-slate-700">
+                Eigener Artikel
+              </span>
+
+              <input
+                type="text"
+                value={freierArtikel}
+                onChange={(event) =>
+                  setFreierArtikel(
+                    event.target.value,
+                  )
+                }
+                placeholder="z. B. Schlafsack, Gardine oder Teppichdecke"
+                className="mt-2 w-full rounded-xl border-2 border-blue-300 px-4 py-3 text-slate-900 outline-none focus:border-blue-700"
+              />
+            </label>
+          )}
 
           <button
             type="button"
