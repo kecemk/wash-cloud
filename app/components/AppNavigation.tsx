@@ -16,6 +16,7 @@ type NavigationsEintrag = {
   href: string;
   name: string;
   berechtigung: Berechtigung;
+  nurAdmin?: boolean;
 };
 
 const hauptNavigation: NavigationsEintrag[] = [
@@ -66,6 +67,12 @@ const weitereNavigation: NavigationsEintrag[] = [
     href: "/benutzer",
     name: "Benutzer",
     berechtigung: "benutzer_anzeigen",
+  },
+  {
+    href: "/artikel",
+    name: "Artikelverwaltung",
+    berechtigung: "dashboard_anzeigen",
+    nurAdmin: true,
   },
 ];
 
@@ -147,7 +154,9 @@ export default function AppNavigation() {
       (eintrag) =>
         hatAktuellerBenutzerBerechtigung(
           eintrag.berechtigung,
-        ),
+        ) &&
+        (!eintrag.nurAdmin ||
+          aktuellerBenutzer?.rolle === "admin"),
     );
 
   async function benutzerAbmelden() {
