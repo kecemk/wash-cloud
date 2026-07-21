@@ -32,6 +32,11 @@ type Kunde = {
   telefon: string;
 };
 
+type ArtikelAuswahl = {
+  id: number;
+  name: string;
+};
+
 type PositionFotos = Record<number, File[]>;
 
 const MAXIMALE_FOTOGROESSE =
@@ -132,6 +137,21 @@ export default function KassePage() {
     useState("Hemd");
 
   const [
+    artikelAuswahl,
+    setArtikelAuswahl,
+  ] = useState<ArtikelAuswahl[]>([]);
+
+  const [
+    artikelWerdenGeladen,
+    setArtikelWerdenGeladen,
+  ] = useState(true);
+
+  const [
+    artikelFehler,
+    setArtikelFehler,
+  ] = useState("");
+
+  const [
     freierArtikel,
     setFreierArtikel,
   ] = useState("");
@@ -196,6 +216,58 @@ export default function KassePage() {
     kundenAuswahlIstOffen,
     setKundenAuswahlIstOffen,
   ] = useState(false);
+
+  useEffect(() => {
+    async function artikelLaden() {
+      setArtikelWerdenGeladen(true);
+      setArtikelFehler("");
+
+      const { data, error } =
+        await supabase
+          .from("artikel")
+          .select("id, name")
+          .eq("aktiv", true)
+          .order("sortierung", {
+            ascending: true,
+          })
+          .order("name", {
+            ascending: true,
+          });
+
+      if (error) {
+        console.error(
+          "Die Artikel konnten nicht geladen werden:",
+          error,
+        );
+
+        setArtikelAuswahl([]);
+        setArtikelFehler(error.message);
+        setArtikelWerdenGeladen(false);
+        return;
+      }
+
+      const geladeneArtikel =
+        (data as ArtikelAuswahl[] | null) ?? [];
+
+      setArtikelAuswahl(geladeneArtikel);
+
+      if (
+        geladeneArtikel.length > 0 &&
+        !geladeneArtikel.some(
+          (eintrag) =>
+            eintrag.name === artikel,
+        )
+      ) {
+        setArtikel(
+          geladeneArtikel[0].name,
+        );
+      }
+
+      setArtikelWerdenGeladen(false);
+    }
+
+    void artikelLaden();
+  }, []);
 
   useEffect(() => {
     async function kundenLaden() {
@@ -1325,6 +1397,22 @@ export default function KassePage() {
           </div>
         )}
 
+        {artikelFehler && (
+          <div className="mb-6 rounded-xl bg-yellow-100 p-4 text-sm text-yellow-800">
+            <p className="font-bold">
+              Artikel konnten nicht geladen werden
+            </p>
+
+            <p className="mt-1">
+              {artikelFehler}
+            </p>
+
+            <p className="mt-1">
+              Du kannst weiterhin „Sonstiges / selbst eingeben“ verwenden.
+            </p>
+          </div>
+        )}
+
         <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
@@ -1512,31 +1600,26 @@ export default function KassePage() {
                     event.target.value,
                   )
                 }
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                disabled={artikelWerdenGeladen}
+                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100"
               >
-                <option value="Hemd">
-                  Hemd
-                </option>
+                {artikelWerdenGeladen && (
+                  <option value="">
+                    Artikel werden geladen ...
+                  </option>
+                )}
 
-                <option value="Hose">
-                  Hose
-                </option>
-
-                <option value="Jacke">
-                  Jacke
-                </option>
-
-                <option value="Anzug">
-                  Anzug
-                </option>
-
-                <option value="Mantel">
-                  Mantel
-                </option>
-
-                <option value="Kleid">
-                  Kleid
-                </option>
+                {!artikelWerdenGeladen &&
+                  artikelAuswahl.map(
+                    (artikelEintrag) => (
+                      <option
+                        key={artikelEintrag.id}
+                        value={artikelEintrag.name}
+                      >
+                        {artikelEintrag.name}
+                      </option>
+                    ),
+                  )}
 
                 <option value="Sonstiges">
                   Sonstiges / selbst eingeben
