@@ -44,6 +44,11 @@ type OffenerSammelschein = {
   status: "offen" | "erledigt";
 };
 
+type KundenModus =
+  | "laufkunde"
+  | "gespeicherter_kunde"
+  | "einmalige_firma";
+
 type PositionFotos = Record<number, File[]>;
 
 const MAXIMALE_FOTOGROESSE =
@@ -203,6 +208,46 @@ export default function KassePage() {
   const [
     ausgewaehlteKundenId,
     setAusgewaehlteKundenId,
+  ] = useState("");
+
+  const [
+    kundenModus,
+    setKundenModus,
+  ] = useState<KundenModus>("laufkunde");
+
+  const [
+    einmaligeFirma,
+    setEinmaligeFirma,
+  ] = useState("");
+
+  const [
+    einmaligerAnsprechpartner,
+    setEinmaligerAnsprechpartner,
+  ] = useState("");
+
+  const [
+    einmaligeStrasse,
+    setEinmaligeStrasse,
+  ] = useState("");
+
+  const [
+    einmaligePlz,
+    setEinmaligePlz,
+  ] = useState("");
+
+  const [
+    einmaligerOrt,
+    setEinmaligerOrt,
+  ] = useState("");
+
+  const [
+    einmaligeTelefon,
+    setEinmaligeTelefon,
+  ] = useState("");
+
+  const [
+    einmaligeEmail,
+    setEinmaligeEmail,
   ] = useState("");
 
   const [
@@ -1125,6 +1170,16 @@ export default function KassePage() {
       0,
     );
 
+  function einmaligeFirmaLeeren() {
+    setEinmaligeFirma("");
+    setEinmaligerAnsprechpartner("");
+    setEinmaligeStrasse("");
+    setEinmaligePlz("");
+    setEinmaligerOrt("");
+    setEinmaligeTelefon("");
+    setEinmaligeEmail("");
+  }
+
   async function lieferscheinFertigstellen() {
     if (speichert) {
       return;
@@ -1156,12 +1211,42 @@ export default function KassePage() {
       return;
     }
 
+    if (
+      kundenModus ===
+        "gespeicherter_kunde" &&
+      !ausgewaehlterKunde
+    ) {
+      alert(
+        "Bitte einen gespeicherten Kunden auswählen.",
+      );
+      return;
+    }
+
+    const bereinigteEinmaligeFirma =
+      einmaligeFirma.trim();
+
+    if (
+      kundenModus ===
+        "einmalige_firma" &&
+      !bereinigteEinmaligeFirma
+    ) {
+      alert(
+        "Bitte den Firmennamen der einmaligen Firma eingeben.",
+      );
+      return;
+    }
+
     const kundenText =
+      kundenModus ===
+        "gespeicherter_kunde" &&
       ausgewaehlterKunde
         ? ` und den Kunden ${kundenNameErmitteln(
             ausgewaehlterKunde,
           )}`
-        : " als Laufkunde";
+        : kundenModus ===
+            "einmalige_firma"
+          ? ` und die einmalige Firma ${bereinigteEinmaligeFirma}`
+          : " als Laufkunde";
 
     if (
       !window.confirm(
@@ -1198,8 +1283,52 @@ export default function KassePage() {
             annahmestelle_id:
               ausgewaehlteAnnahmestelleId,
             kunde_id:
-              ausgewaehlterKunde?.id ??
-              null,
+              kundenModus ===
+                "gespeicherter_kunde"
+                ? ausgewaehlterKunde?.id ??
+                  null
+                : null,
+            einmalige_firma:
+              kundenModus ===
+              "einmalige_firma"
+                ? bereinigteEinmaligeFirma
+                : null,
+            einmaliger_ansprechpartner:
+              kundenModus ===
+              "einmalige_firma"
+                ? einmaligerAnsprechpartner.trim() ||
+                  null
+                : null,
+            einmalige_strasse:
+              kundenModus ===
+              "einmalige_firma"
+                ? einmaligeStrasse.trim() ||
+                  null
+                : null,
+            einmalige_plz:
+              kundenModus ===
+              "einmalige_firma"
+                ? einmaligePlz.trim() ||
+                  null
+                : null,
+            einmaliger_ort:
+              kundenModus ===
+              "einmalige_firma"
+                ? einmaligerOrt.trim() ||
+                  null
+                : null,
+            einmalige_telefon:
+              kundenModus ===
+              "einmalige_firma"
+                ? einmaligeTelefon.trim() ||
+                  null
+                : null,
+            einmalige_email:
+              kundenModus ===
+              "einmalige_firma"
+                ? einmaligeEmail.trim() ||
+                  null
+                : null,
             status: "fertig",
             gesamtbetrag:
               gesamtBetrag,
@@ -1503,14 +1632,21 @@ export default function KassePage() {
       setSammelscheine([]);
       setPositionFotos({});
       setAusgewaehlteKundenId("");
+      setKundenModus("laufkunde");
+      einmaligeFirmaLeeren();
       formularLeeren();
 
       setErfolgsmeldung(
+        kundenModus ===
+          "gespeicherter_kunde" &&
         ausgewaehlterKunde
           ? `Der Lieferschein ${neueLieferscheinNummer} wurde für ${kundenNameErmitteln(
               ausgewaehlterKunde,
             )} erfolgreich in Supabase gespeichert.`
-          : `Der Lieferschein ${neueLieferscheinNummer} wurde als Laufkunden-Auftrag erfolgreich in Supabase gespeichert.`,
+          : kundenModus ===
+              "einmalige_firma"
+            ? `Der Lieferschein ${neueLieferscheinNummer} wurde für ${bereinigteEinmaligeFirma} erfolgreich in Supabase gespeichert, ohne die Firma als Kunden anzulegen.`
+            : `Der Lieferschein ${neueLieferscheinNummer} wurde als Laufkunden-Auftrag erfolgreich in Supabase gespeichert.`,
       );
 
       window.scrollTo({
@@ -1706,11 +1842,11 @@ export default function KassePage() {
           >
             <div>
               <p className="font-bold text-slate-950">
-                Kunde auswählen
+                Kunde / Firma
               </p>
 
               <p className="mt-1 text-sm text-slate-600">
-                Optional – ohne Auswahl wird der Auftrag als Laufkunde gespeichert.
+                Laufkunde, gespeicherter Kunde oder einmalige Firma.
               </p>
             </div>
 
@@ -1721,65 +1857,309 @@ export default function KassePage() {
 
           {kundenAuswahlIstOffen && (
             <div className="mt-5 border-t border-slate-200 pt-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <label className="min-w-0 flex-1">
-                  <span className="text-sm font-medium text-slate-700">
-                    Kunde für diesen Lieferschein
-                  </span>
-
-                  <select
-                    value={ausgewaehlteKundenId}
-                    onChange={(event) => {
-                      setAusgewaehlteKundenId(
-                        event.target.value,
-                      );
-
-                      setErfolgsmeldung("");
-                      setSupabaseFehler("");
-                    }}
-                    disabled={kundenWerdenGeladen}
-                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100"
-                  >
-                    <option value="">
-                      {kundenWerdenGeladen
-                        ? "Kunden werden geladen ..."
-                        : "Laufkunde – kein Kunde ausgewählt"}
-                    </option>
-
-                    {kunden.map((kunde) => (
-                      <option
-                        key={kunde.id}
-                        value={kunde.id}
-                      >
-                        {kunde.kundennummer} –{" "}
-                        {kundenNameErmitteln(kunde)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <Link
-                  href="/kunden"
-                  className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700"
+              <div className="grid gap-3 md:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKundenModus(
+                      "laufkunde",
+                    );
+                    setAusgewaehlteKundenId(
+                      "",
+                    );
+                    setErfolgsmeldung("");
+                    setSupabaseFehler("");
+                  }}
+                  className={`rounded-xl border px-4 py-4 text-left ${
+                    kundenModus ===
+                    "laufkunde"
+                      ? "border-blue-700 bg-blue-50 text-blue-900"
+                      : "border-slate-300 text-slate-700"
+                  }`}
                 >
-                  Kunden verwalten
-                </Link>
+                  <span className="block font-bold">
+                    Laufkunde
+                  </span>
+                  <span className="mt-1 block text-sm">
+                    Ohne Kundendaten
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKundenModus(
+                      "gespeicherter_kunde",
+                    );
+                    setErfolgsmeldung("");
+                    setSupabaseFehler("");
+                  }}
+                  className={`rounded-xl border px-4 py-4 text-left ${
+                    kundenModus ===
+                    "gespeicherter_kunde"
+                      ? "border-blue-700 bg-blue-50 text-blue-900"
+                      : "border-slate-300 text-slate-700"
+                  }`}
+                >
+                  <span className="block font-bold">
+                    Gespeicherter Kunde
+                  </span>
+                  <span className="mt-1 block text-sm">
+                    Aus Kundenliste auswählen
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKundenModus(
+                      "einmalige_firma",
+                    );
+                    setAusgewaehlteKundenId(
+                      "",
+                    );
+                    setErfolgsmeldung("");
+                    setSupabaseFehler("");
+                  }}
+                  className={`rounded-xl border px-4 py-4 text-left ${
+                    kundenModus ===
+                    "einmalige_firma"
+                      ? "border-blue-700 bg-blue-50 text-blue-900"
+                      : "border-slate-300 text-slate-700"
+                  }`}
+                >
+                  <span className="block font-bold">
+                    Einmalige Firma
+                  </span>
+                  <span className="mt-1 block text-sm">
+                    Nur auf diesem Lieferschein
+                  </span>
+                </button>
               </div>
 
-              {ausgewaehlterKunde && (
-                <div className="mt-4 rounded-xl bg-blue-50 p-4 text-blue-900">
-                  <p className="font-bold">
-                    {kundenNameErmitteln(
-                      ausgewaehlterKunde,
-                    )}
-                  </p>
+              {kundenModus ===
+                "gespeicherter_kunde" && (
+                <div className="mt-5">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <label className="min-w-0 flex-1">
+                      <span className="text-sm font-medium text-slate-700">
+                        Kunde für diesen Lieferschein
+                      </span>
 
-                  <p className="mt-1 text-sm">
-                    {ausgewaehlterKunde.kundennummer}
-                    {ausgewaehlterKunde.telefon
-                      ? ` · ${ausgewaehlterKunde.telefon}`
-                      : ""}
-                  </p>
+                      <select
+                        value={
+                          ausgewaehlteKundenId
+                        }
+                        onChange={(event) => {
+                          setAusgewaehlteKundenId(
+                            event.target.value,
+                          );
+
+                          setErfolgsmeldung(
+                            "",
+                          );
+                          setSupabaseFehler(
+                            "",
+                          );
+                        }}
+                        disabled={
+                          kundenWerdenGeladen
+                        }
+                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100"
+                      >
+                        <option value="">
+                          {kundenWerdenGeladen
+                            ? "Kunden werden geladen ..."
+                            : "Bitte Kunde auswählen"}
+                        </option>
+
+                        {kunden.map(
+                          (kunde) => (
+                            <option
+                              key={kunde.id}
+                              value={kunde.id}
+                            >
+                              {
+                                kunde.kundennummer
+                              }{" "}
+                              –{" "}
+                              {kundenNameErmitteln(
+                                kunde,
+                              )}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </label>
+
+                    <Link
+                      href="/kunden"
+                      className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700"
+                    >
+                      Kunden verwalten
+                    </Link>
+                  </div>
+
+                  {ausgewaehlterKunde && (
+                    <div className="mt-4 rounded-xl bg-blue-50 p-4 text-blue-900">
+                      <p className="font-bold">
+                        {kundenNameErmitteln(
+                          ausgewaehlterKunde,
+                        )}
+                      </p>
+
+                      <p className="mt-1 text-sm">
+                        {
+                          ausgewaehlterKunde.kundennummer
+                        }
+                        {ausgewaehlterKunde.telefon
+                          ? ` · ${ausgewaehlterKunde.telefon}`
+                          : ""}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {kundenModus ===
+                "einmalige_firma" && (
+                <div className="mt-5 rounded-2xl bg-slate-50 p-5">
+                  <div className="mb-4">
+                    <p className="font-bold text-slate-900">
+                      Einmalige Firmendaten
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Diese Firma wird nicht in der Kundenliste angelegt.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="md:col-span-2">
+                      <span className="text-sm font-medium text-slate-700">
+                        Firmenname *
+                      </span>
+                      <input
+                        type="text"
+                        value={einmaligeFirma}
+                        onChange={(event) =>
+                          setEinmaligeFirma(
+                            event.target.value,
+                          )
+                        }
+                        placeholder="z. B. Muster Hotel GmbH"
+                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                      />
+                    </label>
+
+                    <label>
+                      <span className="text-sm font-medium text-slate-700">
+                        Ansprechpartner
+                      </span>
+                      <input
+                        type="text"
+                        value={
+                          einmaligerAnsprechpartner
+                        }
+                        onChange={(event) =>
+                          setEinmaligerAnsprechpartner(
+                            event.target.value,
+                          )
+                        }
+                        placeholder="Optional"
+                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                      />
+                    </label>
+
+                    <label>
+                      <span className="text-sm font-medium text-slate-700">
+                        Telefon
+                      </span>
+                      <input
+                        type="tel"
+                        value={
+                          einmaligeTelefon
+                        }
+                        onChange={(event) =>
+                          setEinmaligeTelefon(
+                            event.target.value,
+                          )
+                        }
+                        placeholder="Optional"
+                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                      />
+                    </label>
+
+                    <label className="md:col-span-2">
+                      <span className="text-sm font-medium text-slate-700">
+                        Straße / Hausnummer
+                      </span>
+                      <input
+                        type="text"
+                        value={
+                          einmaligeStrasse
+                        }
+                        onChange={(event) =>
+                          setEinmaligeStrasse(
+                            event.target.value,
+                          )
+                        }
+                        placeholder="Optional"
+                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                      />
+                    </label>
+
+                    <label>
+                      <span className="text-sm font-medium text-slate-700">
+                        PLZ
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={einmaligePlz}
+                        onChange={(event) =>
+                          setEinmaligePlz(
+                            event.target.value,
+                          )
+                        }
+                        placeholder="Optional"
+                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                      />
+                    </label>
+
+                    <label>
+                      <span className="text-sm font-medium text-slate-700">
+                        Ort
+                      </span>
+                      <input
+                        type="text"
+                        value={einmaligerOrt}
+                        onChange={(event) =>
+                          setEinmaligerOrt(
+                            event.target.value,
+                          )
+                        }
+                        placeholder="Optional"
+                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                      />
+                    </label>
+
+                    <label className="md:col-span-2">
+                      <span className="text-sm font-medium text-slate-700">
+                        E-Mail
+                      </span>
+                      <input
+                        type="email"
+                        value={einmaligeEmail}
+                        onChange={(event) =>
+                          setEinmaligeEmail(
+                            event.target.value,
+                          )
+                        }
+                        placeholder="Optional"
+                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                      />
+                    </label>
+                  </div>
                 </div>
               )}
             </div>
