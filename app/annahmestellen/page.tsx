@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import ZugriffsSchutz from "../components/ZugriffsSchutz";
+import { useBenutzer } from "../context/BenutzerContext";
 import { supabase } from "../lib/supabase";
 
 type Annahmestelle = {
@@ -14,6 +15,8 @@ type Annahmestelle = {
 };
 
 export default function AnnahmestellenPage() {
+  const { aktuellerBenutzer } = useBenutzer();
+
   const [
     annahmestellen,
     setAnnahmestellen,
@@ -24,6 +27,42 @@ export default function AnnahmestellenPage() {
 
   const [fehler, setFehler] =
     useState("");
+
+  const [
+    formularOffen,
+    setFormularOffen,
+  ] = useState(false);
+
+  const [neuerName, setNeuerName] =
+    useState("");
+
+  const [
+    neueAdresse,
+    setNeueAdresse,
+  ] = useState("");
+
+  const [
+    neuesTelefon,
+    setNeuesTelefon,
+  ] = useState("");
+
+  const [
+    speichert,
+    setSpeichert,
+  ] = useState(false);
+
+  const [
+    speichernFehler,
+    setSpeichernFehler,
+  ] = useState("");
+
+  const [
+    erfolgsmeldung,
+    setErfolgsmeldung,
+  ] = useState("");
+
+  const istAdmin =
+    aktuellerBenutzer?.rolle === "admin";
 
   useEffect(() => {
     let istAktiv = true;
@@ -74,6 +113,95 @@ export default function AnnahmestellenPage() {
     };
   }, []);
 
+  async function annahmestelleHinzufuegen() {
+    if (!istAdmin) {
+      return;
+    }
+
+    const name = neuerName.trim();
+    const adresse =
+      neueAdresse.trim();
+    const telefon =
+      neuesTelefon.trim();
+
+    if (!name) {
+      alert(
+        "Bitte einen Namen für die Annahmestelle eingeben.",
+      );
+      return;
+    }
+
+    const nameExistiert =
+      annahmestellen.some(
+        (annahmestelle) =>
+          annahmestelle.name
+            .trim()
+            .toLowerCase() ===
+          name.toLowerCase(),
+      );
+
+    if (nameExistiert) {
+      alert(
+        "Eine aktive Annahmestelle mit diesem Namen existiert bereits.",
+      );
+      return;
+    }
+
+    setSpeichert(true);
+    setSpeichernFehler("");
+    setErfolgsmeldung("");
+
+    const { data, error } =
+      await supabase
+        .from("annahmestellen")
+        .insert({
+          name,
+          adresse:
+            adresse || null,
+          telefon:
+            telefon || null,
+          aktiv: true,
+        })
+        .select(
+          "id, name, adresse, telefon, aktiv",
+        )
+        .single();
+
+    if (error || !data) {
+      setSpeichernFehler(
+        error?.message ??
+          "Die Annahmestelle konnte nicht gespeichert werden.",
+      );
+      setSpeichert(false);
+      return;
+    }
+
+    const neueAnnahmestelle =
+      data as Annahmestelle;
+
+    setAnnahmestellen(
+      (aktuelleAnnahmestellen) =>
+        [
+          ...aktuelleAnnahmestellen,
+          neueAnnahmestelle,
+        ].sort((a, b) =>
+          a.name.localeCompare(
+            b.name,
+            "de",
+          ),
+        ),
+    );
+
+    setNeuerName("");
+    setNeueAdresse("");
+    setNeuesTelefon("");
+    setFormularOffen(false);
+    setErfolgsmeldung(
+      `Die Annahmestelle „${neueAnnahmestelle.name}“ wurde angelegt.`,
+    );
+    setSpeichert(false);
+  }
+
   return (
     <ZugriffsSchutz
       berechtigung="kasse_anzeigen"
@@ -86,7 +214,7 @@ export default function AnnahmestellenPage() {
         <header className="bg-slate-950 px-6 py-5 text-white">
           <div className="mx-auto max-w-5xl">
             <p className="text-sm text-slate-300">
-              Wash Cloud
+              Washly
             </p>
 
             <h1 className="text-2xl font-bold">
@@ -96,10 +224,124 @@ export default function AnnahmestellenPage() {
         </header>
 
         <section className="mx-auto max-w-5xl px-6 py-10">
-          <p className="text-slate-600">
-            Für welche Annahmestelle möchtest
-            du einen Lieferschein erstellen?
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <p className="text-slate-600">
+              Für welche Annahmestelle möchtest
+              du einen Lieferschein erstellen?
+            </p>
+
+            {istAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFormularOffen(
+                    (istOffen) =>
+                      !istOffen,
+                  );
+                  setSpeichernFehler("");
+                  setErfolgsmeldung("");
+                }}
+                className="rounded-xl bg-blue-700 px-5 py-3 font-bold text-white shadow-sm"
+              >
+                {formularOffen
+                  ? "Abbrechen"
+                  : "+ Neue Annahmestelle"}
+              </button>
+            )}
+          </div>
+
+          {istAdmin && formularOffen && (
+            <div className="mt-6 rounded-2xl border border-blue-200 bg-white p-6 shadow">
+              <h2 className="text-xl font-bold text-slate-900">
+                Neue Annahmestelle
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-600">
+                Nur der Name ist Pflicht. Adresse und Telefon sind optional.
+              </p>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <label className="md:col-span-2">
+                  <span className="text-sm font-medium text-slate-700">
+                    Name *
+                  </span>
+
+                  <input
+                    type="text"
+                    value={neuerName}
+                    onChange={(event) =>
+                      setNeuerName(
+                        event.target.value,
+                      )
+                    }
+                    placeholder="z. B. Westfield"
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                  />
+                </label>
+
+                <label>
+                  <span className="text-sm font-medium text-slate-700">
+                    Adresse
+                  </span>
+
+                  <input
+                    type="text"
+                    value={neueAdresse}
+                    onChange={(event) =>
+                      setNeueAdresse(
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Optional"
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                  />
+                </label>
+
+                <label>
+                  <span className="text-sm font-medium text-slate-700">
+                    Telefon
+                  </span>
+
+                  <input
+                    type="tel"
+                    value={neuesTelefon}
+                    onChange={(event) =>
+                      setNeuesTelefon(
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Optional"
+                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                  />
+                </label>
+              </div>
+
+              {speichernFehler && (
+                <div className="mt-5 rounded-xl bg-red-100 p-4 text-sm font-semibold text-red-800">
+                  {speichernFehler}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  void annahmestelleHinzufuegen()
+                }
+                disabled={speichert}
+                className="mt-5 rounded-xl bg-green-700 px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {speichert
+                  ? "Wird gespeichert ..."
+                  : "Annahmestelle speichern"}
+              </button>
+            </div>
+          )}
+
+          {erfolgsmeldung && (
+            <div className="mt-6 rounded-xl bg-green-100 p-4 font-semibold text-green-800">
+              {erfolgsmeldung}
+            </div>
+          )}
 
           {laedt && (
             <div className="mt-8 rounded-xl bg-white p-6 shadow">
@@ -142,8 +384,9 @@ export default function AnnahmestellenPage() {
                 </p>
 
                 <p className="mt-2 text-slate-600">
-                  Bitte prüfe die Tabelle
-                  „annahmestellen“ in Supabase.
+                  {istAdmin
+                    ? "Lege oben die erste Annahmestelle an."
+                    : "Bitte wende dich an einen Administrator."}
                 </p>
               </div>
             )}
