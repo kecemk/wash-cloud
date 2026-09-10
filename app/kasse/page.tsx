@@ -1719,7 +1719,7 @@ export default function KassePage() {
       zurueckText="Zu den Lieferscheinen"
     >
       <main className="min-h-screen bg-slate-50">
-      <header className="bg-slate-950 px-6 py-5 text-white">
+      <header className="bg-slate-950 px-4 py-4 text-white sm:px-6 sm:py-5">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm text-slate-300">
@@ -1754,7 +1754,7 @@ export default function KassePage() {
         </div>
       </header>
 
-      <section className="mx-auto max-w-5xl px-6 py-10">
+      <section className="mx-auto max-w-5xl px-3 py-4 pb-32 sm:px-6 sm:py-10 sm:pb-10">
         {erfolgsmeldung && (
           <div className="mb-6 rounded-xl bg-green-100 p-4 text-sm font-semibold text-green-800">
             {erfolgsmeldung}
@@ -1806,7 +1806,7 @@ export default function KassePage() {
           </div>
         )}
 
-        <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:mb-6 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-blue-700">
@@ -1830,7 +1830,7 @@ export default function KassePage() {
           </div>
         </div>
 
-        <div className="mb-6 rounded-2xl bg-white p-5 shadow">
+        <div className="mb-4 rounded-2xl bg-white p-4 shadow sm:mb-6 sm:p-5">
           <button
             type="button"
             onClick={() =>
@@ -2047,7 +2047,7 @@ export default function KassePage() {
                           )
                         }
                         placeholder="z. B. Muster Hotel GmbH"
-                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-base text-slate-900"
                       />
                     </label>
 
@@ -2066,7 +2066,7 @@ export default function KassePage() {
                           )
                         }
                         placeholder="Optional"
-                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900"
+                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-4 text-lg font-semibold text-slate-900"
                       />
                     </label>
 
@@ -2166,7 +2166,7 @@ export default function KassePage() {
           )}
         </div>
 
-        <div className="mx-auto max-w-3xl rounded-3xl bg-white p-6 shadow sm:p-8">
+        <div className="mx-auto max-w-3xl rounded-2xl bg-white p-4 shadow sm:rounded-3xl sm:p-8">
           <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
             Schritt 1
           </p>
@@ -2184,8 +2184,8 @@ export default function KassePage() {
             </div>
           )}
 
-          <div className="mt-6 grid gap-5 md:grid-cols-3">
-            <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3">
+            <div className="col-span-2 mb-2 rounded-2xl border border-blue-200 bg-blue-50 p-4 md:col-span-1 md:mb-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="font-bold text-slate-900">
@@ -2211,7 +2211,7 @@ export default function KassePage() {
                   Für diese Annahmestelle gibt es aktuell keine offenen Nummern.
                 </p>
               ) : (
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
                   {offeneSammelscheine.map(
                     (offenerSammelschein) => (
                       <button
@@ -2222,7 +2222,7 @@ export default function KassePage() {
                             offenerSammelschein.nummer,
                           )
                         }
-                        className={`rounded-xl border px-4 py-3 text-base font-bold ${
+                        className={`min-w-[78px] shrink-0 rounded-xl border px-4 py-3 text-base font-bold ${
                           nummer ===
                           offenerSammelschein.nummer
                             ? "border-blue-700 bg-blue-700 text-white"
@@ -2237,7 +2237,7 @@ export default function KassePage() {
               )}
             </div>
 
-            <label className="block">
+            <label className="col-span-2 block md:col-span-1">
               <span className="text-sm font-medium text-slate-700">
                 Sammelschein-Nummer
               </span>
@@ -2253,7 +2253,7 @@ export default function KassePage() {
                 }
                 placeholder="z. B. 6080"
                 autoFocus
-                className="mt-2 w-full rounded-xl border-2 border-blue-300 px-4 py-4 text-lg font-bold text-slate-900 outline-none focus:border-blue-700"
+                className="mt-2 w-full rounded-xl border-2 border-blue-300 px-4 py-4 text-xl font-bold text-slate-900 outline-none focus:border-blue-700"
               />
             </label>
 
@@ -2340,7 +2340,7 @@ export default function KassePage() {
           <button
             type="button"
             onClick={artikelHinzufuegen}
-            className="mt-6 rounded-xl border border-blue-600 px-5 py-3 font-semibold text-blue-600"
+            className="mt-4 w-full rounded-xl border border-blue-600 px-5 py-3.5 font-bold text-blue-600 sm:mt-6 sm:w-auto"
           >
             + Artikel hinzufügen
           </button>
@@ -2462,7 +2462,7 @@ export default function KassePage() {
             </div>
           )}
 
-          <label className="mt-6 block max-w-sm">
+          <label className="mt-5 block w-full sm:mt-6 sm:max-w-sm">
             <span className="text-sm font-medium text-slate-700">
               Gesamtpreis dieser Nummer
             </span>
@@ -2507,7 +2507,7 @@ export default function KassePage() {
         </div>
 
         {sammelscheine.length > 0 && (
-          <div className="mx-auto mt-8 max-w-3xl rounded-3xl bg-white p-6 shadow">
+          <div className="mx-auto mt-5 max-w-3xl rounded-2xl bg-white p-4 shadow sm:mt-8 sm:rounded-3xl sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold text-slate-900">
@@ -2602,12 +2602,39 @@ export default function KassePage() {
                 lieferscheinFertigstellen
               }
               disabled={speichert}
-              className="mt-6 w-full rounded-xl bg-slate-950 px-5 py-4 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-6 hidden w-full rounded-xl bg-slate-950 px-5 py-4 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 sm:block"
             >
               {speichert
                 ? "Lieferschein wird gespeichert ..."
                 : `Lieferschein ${naechsteLieferscheinNummer} fertigstellen`}
             </button>
+          </div>
+        )}
+
+        {sammelscheine.length > 0 && (
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur sm:hidden">
+            <div className="mx-auto flex max-w-3xl items-center gap-3">
+              <div className="min-w-[92px]">
+                <p className="text-xs text-slate-500">
+                  {sammelscheine.length} Schein
+                  {sammelscheine.length === 1 ? "" : "e"}
+                </p>
+                <p className="text-base font-bold text-slate-950">
+                  {gesamtBetrag.toFixed(2).replace(".", ",")} €
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={lieferscheinFertigstellen}
+                disabled={speichert}
+                className="min-h-12 flex-1 rounded-xl bg-slate-950 px-4 py-3 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {speichert
+                  ? "Speichert ..."
+                  : "Lieferschein fertigstellen"}
+              </button>
+            </div>
           </div>
         )}
       </section>
