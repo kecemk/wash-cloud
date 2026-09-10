@@ -23,9 +23,16 @@ type DatenbankSammelschein = {
   id: number;
   nummer: string;
   preis: number | string;
+  annahmestelle_bestaetigt: boolean;
+  annahmestelle_bestaetigt_am: string | null;
   sammelschein_positionen:
     | DatenbankPosition[]
     | null;
+};
+
+type SammelscheinBestaetigung = {
+  bestaetigt: boolean;
+  bestaetigtAm: string | null;
 };
 
 type DatenbankAnnahmestelle = {
@@ -88,7 +95,7 @@ function annahmestellenNameErmitteln(
     | null,
 ) {
   if (Array.isArray(annahmestellen)) {
-    return (
+  return (
       annahmestellen[0]?.name ??
       "Unbekannte Annahmestelle"
     );
@@ -155,6 +162,21 @@ export default function LieferscheinDetailPage() {
   const [fotoFehler, setFotoFehler] =
     useState("");
 
+  const [
+    sammelscheinBestaetigungen,
+    setSammelscheinBestaetigungen,
+  ] = useState<Record<number, SammelscheinBestaetigung>>({});
+
+  const [
+    bestaetigungWirdGespeichert,
+    setBestaetigungWirdGespeichert,
+  ] = useState<number | null>(null);
+
+  const [
+    bestaetigungsFehler,
+    setBestaetigungsFehler,
+  ] = useState("");
+
   useEffect(() => {
     let istAktiv = true;
 
@@ -185,6 +207,8 @@ export default function LieferscheinDetailPage() {
               id,
               nummer,
               preis,
+              annahmestelle_bestaetigt,
+              annahmestelle_bestaetigt_am,
               sammelschein_positionen (
                 id,
                 artikel,
@@ -257,6 +281,22 @@ export default function LieferscheinDetailPage() {
           );
 
         setLieferschein(geladenerLieferschein);
+
+        setSammelscheinBestaetigungen(
+          Object.fromEntries(
+            (datenbankLieferschein.sammelscheine ?? []).map(
+              (sammelschein) => [
+                sammelschein.id,
+                {
+                  bestaetigt:
+                    sammelschein.annahmestelle_bestaetigt,
+                  bestaetigtAm:
+                    sammelschein.annahmestelle_bestaetigt_am,
+                },
+              ],
+            ),
+          ),
+        );
 
         const {
           data: fotoDaten,
@@ -503,6 +543,56 @@ export default function LieferscheinDetailPage() {
     }
   }
 
+  async function sammelscheinBestaetigungUmschalten(
+    sammelscheinId: number,
+  ) {
+    if (
+      aktuellerBenutzer?.rolle !== "annahmestelle" &&
+      aktuellerBenutzer?.rolle !== "admin"
+    ) {
+      return;
+    }
+
+    const bisher =
+      sammelscheinBestaetigungen[sammelscheinId] ?? {
+        bestaetigt: false,
+        bestaetigtAm: null,
+      };
+
+    const neuerStatus = !bisher.bestaetigt;
+    const bestaetigtAm =
+      neuerStatus ? new Date().toISOString() : null;
+
+    setBestaetigungWirdGespeichert(sammelscheinId);
+    setBestaetigungsFehler("");
+
+    const { error } = await supabase
+      .from("sammelscheine")
+      .update({
+        annahmestelle_bestaetigt: neuerStatus,
+        annahmestelle_bestaetigt_am: bestaetigtAm,
+      })
+      .eq("id", sammelscheinId);
+
+    if (error) {
+      setBestaetigungsFehler(
+        `Der Haken konnte nicht gespeichert werden: ${error.message}`,
+      );
+      setBestaetigungWirdGespeichert(null);
+      return;
+    }
+
+    setSammelscheinBestaetigungen((aktuell) => ({
+      ...aktuell,
+      [sammelscheinId]: {
+        bestaetigt: neuerStatus,
+        bestaetigtAm,
+      },
+    }));
+
+    setBestaetigungWirdGespeichert(null);
+  }
+
   const gesamtTeile =
     lieferschein?.sammelscheine.reduce(
       (summe, sammelschein) => {
@@ -525,6 +615,23 @@ export default function LieferscheinDetailPage() {
       0,
     ) ?? 0;
 
+  const darfLieferungKontrollieren =
+    aktuellerBenutzer?.rolle === "annahmestelle" ||
+    aktuellerBenutzer?.rolle === "admin";
+
+  const anzahlBestaetigt =
+    lieferschein?.sammelscheine.filter(
+      (sammelschein) =>
+        sammelscheinBestaetigungen[sammelschein.id]?.bestaetigt === true,
+    ).length ?? 0;
+
+  const anzahlSammelscheine =
+    lieferschein?.sammelscheine.length ?? 0;
+
+  const lieferungVollstaendigKontrolliert =
+    anzahlSammelscheine > 0 &&
+    anzahlBestaetigt === anzahlSammelscheine;
+
   return (
     <ZugriffsSchutz
       berechtigung="lieferscheine_anzeigen"
@@ -538,7 +645,7 @@ export default function LieferscheinDetailPage() {
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm text-slate-300">
-              Wash Cloud
+              Washly
             </p>
 
             <h1 className="text-2xl font-bold">
@@ -599,6 +706,17 @@ export default function LieferscheinDetailPage() {
           </div>
         )}
 
+        {bestaetigungsFehler && (
+          <div className="mb-6 rounded-2xl bg-red-100 p-5 text-red-800 shadow print:hidden">
+            <p className="font-bold">
+              Kontrolle konnte nicht gespeichert werden
+            </p>
+            <p className="mt-1 text-sm">
+              {bestaetigungsFehler}
+            </p>
+          </div>
+        )}
+
         {fotoFehler && (
           <div className="mb-6 rounded-2xl bg-yellow-100 p-5 text-yellow-900 shadow print:hidden">
             <p className="font-bold">
@@ -651,7 +769,7 @@ export default function LieferscheinDetailPage() {
               <div className="rounded-2xl bg-white p-6 shadow print:rounded-none print:p-0 print:shadow-none">
                 <div className="hidden border-b border-slate-300 pb-5 print:block">
                   <p className="text-sm font-semibold text-slate-600">
-                    Wash Cloud
+                    Washly
                   </p>
 
                   <h1 className="mt-1 text-3xl font-bold text-slate-950">
@@ -689,6 +807,31 @@ export default function LieferscheinDetailPage() {
                   </span>
                 </div>
 
+                {darfLieferungKontrollieren &&
+                  lieferschein.sammelscheine.length > 0 && (
+                  <div className="mt-8 rounded-2xl border border-blue-200 bg-blue-50 p-5 print:hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <p className="font-bold text-slate-900">
+                          Lieferung kontrollieren
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Hake jeden Sammelschein ab, sobald du ihn bei der Lieferung gefunden hast.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-white px-4 py-2 font-bold text-blue-800">
+                        {anzahlBestaetigt} von {anzahlSammelscheine} kontrolliert
+                      </span>
+                    </div>
+
+                    {lieferungVollstaendigKontrolliert && (
+                      <div className="mt-4 rounded-xl bg-green-100 p-4 font-bold text-green-800">
+                        ✅ Lieferung vollständig kontrolliert
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {lieferschein.sammelscheine.length ===
                   0 && (
                   <div className="mt-8 rounded-xl bg-yellow-50 p-5 text-yellow-800">
@@ -707,11 +850,51 @@ export default function LieferscheinDetailPage() {
                           className="break-inside-avoid rounded-xl border border-slate-200 p-5"
                         >
                           <div className="flex flex-wrap items-start justify-between gap-4">
-                            <div>
-                              <h3 className="font-bold text-slate-900">
-                                Sammelschein{" "}
-                                {sammelschein.nummer}
-                              </h3>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-3">
+                                {darfLieferungKontrollieren && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void sammelscheinBestaetigungUmschalten(
+                                        sammelschein.id,
+                                      )
+                                    }
+                                    disabled={bestaetigungWirdGespeichert !== null}
+                                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2 text-xl font-bold ${
+                                      sammelscheinBestaetigungen[sammelschein.id]?.bestaetigt
+                                        ? "border-green-600 bg-green-600 text-white"
+                                        : "border-slate-300 bg-white text-slate-400"
+                                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                                  >
+                                    {bestaetigungWirdGespeichert === sammelschein.id
+                                      ? "…"
+                                      : sammelscheinBestaetigungen[sammelschein.id]?.bestaetigt
+                                        ? "✓"
+                                        : ""}
+                                  </button>
+                                )}
+
+                                <div>
+                                  <h3 className="font-bold text-slate-900">
+                                    Sammelschein{" "}
+                                    {sammelschein.nummer}
+                                  </h3>
+
+                                  {darfLieferungKontrollieren &&
+                                    sammelscheinBestaetigungen[sammelschein.id]?.bestaetigt && (
+                                    <p className="mt-1 text-xs font-semibold text-green-700">
+                                      Kontrolliert
+                                      {sammelscheinBestaetigungen[sammelschein.id]?.bestaetigtAm
+                                        ? ` · ${datumFormatieren(
+                                            sammelscheinBestaetigungen[sammelschein.id]
+                                              .bestaetigtAm as string,
+                                          )}`
+                                        : ""}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
 
                               <div className="mt-3 space-y-1 text-slate-600">
                                 {sammelschein.positionen
@@ -844,7 +1027,7 @@ export default function LieferscheinDetailPage() {
                 </div>
 
                 <div className="mt-12 hidden border-t border-slate-300 pt-5 text-sm text-slate-500 print:block">
-                  <p>Erstellt mit Wash Cloud</p>
+                  <p>Erstellt mit Washly</p>
                 </div>
               </div>
             </>
