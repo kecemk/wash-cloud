@@ -37,6 +37,12 @@ type ArtikelAuswahl = {
   name: string;
 };
 
+type ArtikelAnnahmestellenPreis = {
+  artikel_id: number;
+  annahmestelle_id: number;
+  preis: number;
+};
+
 type OffenerSammelschein = {
   id: number;
   annahmestelle_id: number;
@@ -162,6 +168,11 @@ export default function KassePage() {
     artikelFehler,
     setArtikelFehler,
   ] = useState("");
+
+  const [
+    artikelPreise,
+    setArtikelPreise,
+  ] = useState<ArtikelAnnahmestellenPreis[]>([]);
 
   const [
     offeneSammelscheine,
@@ -330,6 +341,50 @@ export default function KassePage() {
 
     void artikelLaden();
   }, []);
+
+  useEffect(() => {
+    async function artikelPreiseLaden() {
+      if (
+        !Number.isInteger(
+          ausgewaehlteAnnahmestelleId,
+        ) ||
+        ausgewaehlteAnnahmestelleId < 1
+      ) {
+        setArtikelPreise([]);
+        return;
+      }
+
+      const { data, error } =
+        await supabase
+          .from(
+            "artikel_annahmestellen_preise",
+          )
+          .select(
+            "artikel_id, annahmestelle_id, preis",
+          )
+          .eq(
+            "annahmestelle_id",
+            ausgewaehlteAnnahmestelleId,
+          );
+
+      if (error) {
+        console.error(
+          "Die Artikelpreise konnten nicht geladen werden:",
+          error,
+        );
+        setArtikelPreise([]);
+        return;
+      }
+
+      setArtikelPreise(
+        (data as
+          | ArtikelAnnahmestellenPreis[]
+          | null) ?? [],
+      );
+    }
+
+    void artikelPreiseLaden();
+  }, [ausgewaehlteAnnahmestelleId]);
 
   useEffect(() => {
     async function offeneSammelscheineLaden() {
@@ -633,6 +688,54 @@ export default function KassePage() {
     );
   }
 
+  function artikelPreisFuerName(
+    artikelName: string,
+  ): number | null {
+    const artikelEintrag =
+      artikelAuswahl.find(
+        (eintrag) =>
+          eintrag.name === artikelName,
+      );
+
+    if (!artikelEintrag) {
+      return null;
+    }
+
+    const preisEintrag =
+      artikelPreise.find(
+        (eintrag) =>
+          eintrag.artikel_id ===
+          artikelEintrag.id,
+      );
+
+    return preisEintrag
+      ? Number(preisEintrag.preis)
+      : null;
+  }
+
+  function preisTextZuZahl(
+    preisText: string,
+  ): number {
+    const zahl = Number(
+      preisText
+        .replace("€", "")
+        .replace(",", ".")
+        .trim(),
+    );
+
+    return Number.isFinite(zahl)
+      ? zahl
+      : 0;
+  }
+
+  function preisZahlZuText(
+    wert: number,
+  ): string {
+    return Math.max(0, wert)
+      .toFixed(2)
+      .replace(".", ",");
+  }
+
   function artikelHinzufuegen() {
     const mengeAlsZahl = Number(menge);
 
@@ -668,6 +771,29 @@ export default function KassePage() {
         },
       ],
     );
+
+    const hinterlegterStueckpreis =
+      artikelPreisFuerName(
+        ausgewaehlterArtikel,
+      );
+
+    if (
+      hinterlegterStueckpreis !== null
+    ) {
+      const bisherigerGesamtpreis =
+        preisTextZuZahl(preis);
+
+      const neuerGesamtpreis =
+        bisherigerGesamtpreis +
+        hinterlegterStueckpreis *
+          mengeAlsZahl;
+
+      setPreis(
+        preisZahlZuText(
+          neuerGesamtpreis,
+        ),
+      );
+    }
 
     setMenge("");
     setFreierArtikel("");
@@ -778,6 +904,37 @@ export default function KassePage() {
   function artikelPositionLoeschen(
     id: number,
   ) {
+    const zuLoeschendePosition =
+      positionen.find(
+        (position) =>
+          position.id === id,
+      );
+
+    if (zuLoeschendePosition) {
+      const hinterlegterStueckpreis =
+        artikelPreisFuerName(
+          zuLoeschendePosition.artikel,
+        );
+
+      if (
+        hinterlegterStueckpreis !== null
+      ) {
+        const bisherigerGesamtpreis =
+          preisTextZuZahl(preis);
+
+        const neuerGesamtpreis =
+          bisherigerGesamtpreis -
+          hinterlegterStueckpreis *
+            zuLoeschendePosition.menge;
+
+        setPreis(
+          preisZahlZuText(
+            neuerGesamtpreis,
+          ),
+        );
+      }
+    }
+
     setPositionen(
       (aktuellePositionen) =>
         aktuellePositionen.filter(
@@ -1696,6 +1853,13 @@ export default function KassePage() {
   const naechsteLieferscheinNummer =
     naechsteLokaleLieferscheinNummerErmitteln();
 
+  const ausgewaehlterArtikelPreis =
+    artikel === "Sonstiges"
+      ? null
+      : artikelPreisFuerName(
+          artikel,
+        );
+
   function artikelText(
     position: ArtikelPosition,
   ) {
@@ -2314,6 +2478,28 @@ export default function KassePage() {
                   Sonstiges / selbst eingeben
                 </option>
               </select>
+
+              {!artikelWerdenGeladen &&
+                artikel !== "Sonstiges" && (
+                  <div
+                    className={`mt-2 rounded-lg px-3 py-2 text-sm font-semibold ${
+                      ausgewaehlterArtikelPreis !==
+                      null
+                        ? "bg-green-50 text-green-800"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {ausgewaehlterArtikelPreis !==
+                    null
+                      ? `Preis ${ausgewaehlteAnnahmestelle}: ${ausgewaehlterArtikelPreis
+                          .toFixed(2)
+                          .replace(
+                            ".",
+                            ",",
+                          )} € pro Stück`
+                      : "Kein Preis hinterlegt – der Gesamtpreis kann manuell ergänzt werden."}
+                  </div>
+                )}
             </label>
           </div>
 
@@ -2466,6 +2652,10 @@ export default function KassePage() {
             <span className="text-sm font-medium text-slate-700">
               Gesamtpreis dieser Nummer
             </span>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Hinterlegte Artikelpreise werden automatisch addiert. Du kannst den Gesamtpreis jederzeit manuell ändern.
+            </p>
 
             <input
               type="text"

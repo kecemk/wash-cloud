@@ -1,7 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useBenutzer } from "../context/BenutzerContext";
 import { supabase } from "../lib/supabase";
 
@@ -14,6 +19,52 @@ type Artikel = {
   aktualisiert_am: string;
 };
 
+type Annahmestelle = {
+  id: number;
+  name: string;
+  aktiv: boolean;
+};
+
+type ArtikelPreis = {
+  id: number;
+  artikel_id: number;
+  annahmestelle_id: number;
+  preis: number;
+};
+
+type PreisEingaben = Record<number, string>;
+
+function preisFormatieren(preis: number) {
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+  }).format(preis);
+}
+
+function preisTextZuZahl(
+  wert: string,
+): number | null {
+  const bereinigt = wert
+    .replace("€", "")
+    .replace(",", ".")
+    .trim();
+
+  if (bereinigt === "") {
+    return null;
+  }
+
+  const zahl = Number(bereinigt);
+
+  if (
+    Number.isNaN(zahl) ||
+    zahl < 0
+  ) {
+    return Number.NaN;
+  }
+
+  return Math.round(zahl * 100) / 100;
+}
+
 export default function ArtikelVerwaltungPage() {
   const {
     aktuellerBenutzer,
@@ -23,11 +74,26 @@ export default function ArtikelVerwaltungPage() {
   const [artikel, setArtikel] =
     useState<Artikel[]>([]);
 
+  const [
+    annahmestellen,
+    setAnnahmestellen,
+  ] = useState<Annahmestelle[]>([]);
+
+  const [
+    artikelPreise,
+    setArtikelPreise,
+  ] = useState<ArtikelPreis[]>([]);
+
   const [name, setName] =
     useState("");
 
   const [sortierung, setSortierung] =
     useState("");
+
+  const [
+    preisEingaben,
+    setPreisEingaben,
+  ] = useState<PreisEingaben>({});
 
   const [
     bearbeiteteArtikelId,
@@ -57,18 +123,22 @@ export default function ArtikelVerwaltungPage() {
       return;
     }
 
-    void artikelLaden();
+    void datenLaden();
   }, [
     benutzerWirdGeladen,
     istAdmin,
   ]);
 
-  async function artikelLaden() {
+  async function datenLaden() {
     setLaedt(true);
     setFehler("");
 
-    const { data, error } =
-      await supabase
+    const [
+      artikelAntwort,
+      annahmestellenAntwort,
+      preiseAntwort,
+    ] = await Promise.all([
+      supabase
         .from("artikel")
         .select(
           "id, name, aktiv, sortierung, erstellt_am, aktualisiert_am",
@@ -78,16 +148,71 @@ export default function ArtikelVerwaltungPage() {
         })
         .order("name", {
           ascending: true,
-        });
+        }),
 
-    if (error) {
+      supabase
+        .from("annahmestellen")
+        .select("id, name, aktiv")
+        .eq("aktiv", true)
+        .order("name", {
+          ascending: true,
+        }),
+
+      supabase
+        .from(
+          "artikel_annahmestellen_preise",
+        )
+        .select(
+          "id, artikel_id, annahmestelle_id, preis",
+        ),
+    ]);
+
+    if (artikelAntwort.error) {
       setArtikel([]);
-      setFehler(error.message);
-    } else {
-      setArtikel(
-        (data as Artikel[] | null) ?? [],
+      setFehler(
+        artikelAntwort.error.message,
       );
+      setLaedt(false);
+      return;
     }
+
+    if (
+      annahmestellenAntwort.error
+    ) {
+      setAnnahmestellen([]);
+      setFehler(
+        annahmestellenAntwort.error.message,
+      );
+      setLaedt(false);
+      return;
+    }
+
+    if (preiseAntwort.error) {
+      setArtikelPreise([]);
+      setFehler(
+        preiseAntwort.error.message,
+      );
+      setLaedt(false);
+      return;
+    }
+
+    setArtikel(
+      (artikelAntwort.data as
+        | Artikel[]
+        | null) ?? [],
+    );
+
+    setAnnahmestellen(
+      (annahmestellenAntwort.data as
+        | Annahmestelle[]
+        | null) ?? [],
+    );
+
+    setArtikelPreise(
+      (preiseAntwort.data as
+        | ArtikelPreis[]
+        | null) ?? [],
+    );
 
     setLaedt(false);
   }
@@ -95,6 +220,7 @@ export default function ArtikelVerwaltungPage() {
   function formularLeeren() {
     setName("");
     setSortierung("");
+    setPreisEingaben({});
     setBearbeiteteArtikelId(null);
   }
 
@@ -111,6 +237,33 @@ export default function ArtikelVerwaltungPage() {
       String(artikelEintrag.sortierung),
     );
 
+    const neuePreisEingaben:
+      PreisEingaben = {};
+
+    annahmestellen.forEach(
+      (annahmestelle) => {
+        const preis = artikelPreise.find(
+          (eintrag) =>
+            eintrag.artikel_id ===
+              artikelEintrag.id &&
+            eintrag.annahmestelle_id ===
+              annahmestelle.id,
+        );
+
+        neuePreisEingaben[
+          annahmestelle.id
+        ] = preis
+          ? preis.preis
+              .toFixed(2)
+              .replace(".", ",")
+          : "";
+      },
+    );
+
+    setPreisEingaben(
+      neuePreisEingaben,
+    );
+
     setFehler("");
     setErfolg("");
 
@@ -118,6 +271,77 @@ export default function ArtikelVerwaltungPage() {
       top: 0,
       behavior: "smooth",
     });
+  }
+
+  async function preiseSpeichern(
+    artikelId: number,
+  ) {
+    for (
+      const annahmestelle of annahmestellen
+    ) {
+      const eingabe =
+        preisEingaben[
+          annahmestelle.id
+        ] ?? "";
+
+      const preis =
+        preisTextZuZahl(eingabe);
+
+      if (
+        typeof preis === "number" &&
+        Number.isNaN(preis)
+      ) {
+        throw new Error(
+          `Der Preis für ${annahmestelle.name} ist ungültig.`,
+        );
+      }
+
+      if (preis === null) {
+        const { error } = await supabase
+          .from(
+            "artikel_annahmestellen_preise",
+          )
+          .delete()
+          .eq("artikel_id", artikelId)
+          .eq(
+            "annahmestelle_id",
+            annahmestelle.id,
+          );
+
+        if (error) {
+          throw new Error(
+            `Der Preis für ${annahmestelle.name} konnte nicht entfernt werden: ${error.message}`,
+          );
+        }
+
+        continue;
+      }
+
+      const { error } = await supabase
+        .from(
+          "artikel_annahmestellen_preise",
+        )
+        .upsert(
+          {
+            artikel_id: artikelId,
+            annahmestelle_id:
+              annahmestelle.id,
+            preis,
+            aktualisiert_am:
+              new Date().toISOString(),
+          },
+          {
+            onConflict:
+              "artikel_id,annahmestelle_id",
+          },
+        );
+
+      if (error) {
+        throw new Error(
+          `Der Preis für ${annahmestelle.name} konnte nicht gespeichert werden: ${error.message}`,
+        );
+      }
+    }
   }
 
   async function artikelSpeichern(
@@ -156,54 +380,113 @@ export default function ArtikelVerwaltungPage() {
       return;
     }
 
+    for (
+      const annahmestelle of annahmestellen
+    ) {
+      const eingabe =
+        preisEingaben[
+          annahmestelle.id
+        ] ?? "";
+
+      const preis =
+        preisTextZuZahl(eingabe);
+
+      if (
+        typeof preis === "number" &&
+        Number.isNaN(preis)
+      ) {
+        setFehler(
+          `Bitte gib für ${annahmestelle.name} einen gültigen Preis ein oder lasse das Feld leer.`,
+        );
+        return;
+      }
+    }
+
     setSpeichert(true);
     setFehler("");
     setErfolg("");
 
-    const anfrage =
-      bearbeiteteArtikelId === null
-        ? supabase
-            .from("artikel")
-            .insert({
-              name: bereinigterName,
-              sortierung:
-                sortierungAlsZahl,
-            })
-        : supabase
-            .from("artikel")
-            .update({
-              name: bereinigterName,
-              sortierung:
-                sortierungAlsZahl,
-              aktualisiert_am:
-                new Date().toISOString(),
-            })
-            .eq(
-              "id",
-              bearbeiteteArtikelId,
-            );
+    try {
+      let artikelId =
+        bearbeiteteArtikelId;
 
-    const { error } = await anfrage;
+      if (
+        bearbeiteteArtikelId === null
+      ) {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from("artikel")
+          .insert({
+            name: bereinigterName,
+            sortierung:
+              sortierungAlsZahl,
+          })
+          .select("id")
+          .single();
 
-    if (error) {
-      setFehler(
-        error.code === "23505"
-          ? "Dieser Artikel ist bereits vorhanden."
-          : error.message,
+        if (error || !data) {
+          throw new Error(
+            error?.code === "23505"
+              ? "Dieser Artikel ist bereits vorhanden."
+              : error?.message ??
+                  "Der Artikel konnte nicht angelegt werden.",
+          );
+        }
+
+        artikelId = Number(data.id);
+      } else {
+        const { error } = await supabase
+          .from("artikel")
+          .update({
+            name: bereinigterName,
+            sortierung:
+              sortierungAlsZahl,
+            aktualisiert_am:
+              new Date().toISOString(),
+          })
+          .eq(
+            "id",
+            bearbeiteteArtikelId,
+          );
+
+        if (error) {
+          throw new Error(
+            error.code === "23505"
+              ? "Dieser Artikel ist bereits vorhanden."
+              : error.message,
+          );
+        }
+      }
+
+      if (artikelId === null) {
+        throw new Error(
+          "Die Artikel-ID konnte nicht ermittelt werden.",
+        );
+      }
+
+      await preiseSpeichern(
+        artikelId,
       );
+
+      setErfolg(
+        bearbeiteteArtikelId === null
+          ? "Der Artikel und die optionalen Preise wurden hinzugefügt."
+          : "Der Artikel und die Preise wurden gespeichert.",
+      );
+
+      formularLeeren();
+      await datenLaden();
+    } catch (unbekannterFehler) {
+      setFehler(
+        unbekannterFehler instanceof Error
+          ? unbekannterFehler.message
+          : "Der Artikel konnte nicht gespeichert werden.",
+      );
+    } finally {
       setSpeichert(false);
-      return;
     }
-
-    setErfolg(
-      bearbeiteteArtikelId === null
-        ? "Der Artikel wurde hinzugefügt."
-        : "Der Artikel wurde gespeichert.",
-    );
-
-    formularLeeren();
-    await artikelLaden();
-    setSpeichert(false);
   }
 
   async function artikelStatusAendern(
@@ -216,11 +499,15 @@ export default function ArtikelVerwaltungPage() {
       await supabase
         .from("artikel")
         .update({
-          aktiv: !artikelEintrag.aktiv,
+          aktiv:
+            !artikelEintrag.aktiv,
           aktualisiert_am:
             new Date().toISOString(),
         })
-        .eq("id", artikelEintrag.id);
+        .eq(
+          "id",
+          artikelEintrag.id,
+        );
 
     if (error) {
       setFehler(error.message);
@@ -233,8 +520,36 @@ export default function ArtikelVerwaltungPage() {
         : "Der Artikel wurde aktiviert.",
     );
 
-    await artikelLaden();
+    await datenLaden();
   }
+
+  const preiseNachArtikel =
+    useMemo(() => {
+      const map = new Map<
+        number,
+        ArtikelPreis[]
+      >();
+
+      artikelPreise.forEach(
+        (preisEintrag) => {
+          const aktuellePreise =
+            map.get(
+              preisEintrag.artikel_id,
+            ) ?? [];
+
+          aktuellePreise.push(
+            preisEintrag,
+          );
+
+          map.set(
+            preisEintrag.artikel_id,
+            aktuellePreise,
+          );
+        },
+      );
+
+      return map;
+    }, [artikelPreise]);
 
   if (benutzerWirdGeladen) {
     return (
@@ -282,12 +597,12 @@ export default function ArtikelVerwaltungPage() {
           </h1>
 
           <p className="mt-2 text-sm text-slate-300">
-            Artikel dauerhaft für die Kasse anlegen, sortieren und deaktivieren.
+            Artikel und optionale Preise je Annahmestelle verwalten.
           </p>
         </div>
       </header>
 
-      <section className="mx-auto max-w-5xl px-6 py-10">
+      <section className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
         {fehler && (
           <div className="mb-6 rounded-xl bg-red-100 p-4 font-semibold text-red-800">
             {fehler}
@@ -300,7 +615,7 @@ export default function ArtikelVerwaltungPage() {
           </div>
         )}
 
-        <div className="rounded-3xl bg-white p-6 shadow">
+        <div className="rounded-3xl bg-white p-5 shadow sm:p-6">
           <h2 className="text-xl font-bold text-slate-950">
             {bearbeiteteArtikelId === null
               ? "Neuen Artikel hinzufügen"
@@ -320,7 +635,9 @@ export default function ArtikelVerwaltungPage() {
                 type="text"
                 value={name}
                 onChange={(event) => {
-                  setName(event.target.value);
+                  setName(
+                    event.target.value,
+                  );
                   setFehler("");
                 }}
                 placeholder="z. B. Pullover"
@@ -350,6 +667,82 @@ export default function ArtikelVerwaltungPage() {
               />
             </label>
 
+            <div className="md:col-span-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                <div>
+                  <p className="font-bold text-slate-950">
+                    Preise je Annahmestelle
+                  </p>
+
+                  <p className="mt-1 text-sm text-slate-600">
+                    Optional. Wenn kein Preis eingetragen ist, kann der Preis in der Kasse weiterhin manuell eingegeben werden.
+                  </p>
+                </div>
+
+                {annahmestellen.length === 0 ? (
+                  <div className="mt-4 rounded-xl bg-orange-100 p-4 text-sm text-orange-800">
+                    Es wurden keine aktiven Annahmestellen gefunden.
+                  </div>
+                ) : (
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    {annahmestellen.map(
+                      (annahmestelle) => (
+                        <label
+                          key={
+                            annahmestelle.id
+                          }
+                          className="block rounded-xl bg-white p-4 shadow-sm"
+                        >
+                          <span className="text-sm font-bold text-slate-800">
+                            {
+                              annahmestelle.name
+                            }
+                          </span>
+
+                          <div className="relative mt-2">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={
+                                preisEingaben[
+                                  annahmestelle
+                                    .id
+                                ] ?? ""
+                              }
+                              onChange={(
+                                event,
+                              ) => {
+                                setPreisEingaben(
+                                  (
+                                    aktuellePreise,
+                                  ) => ({
+                                    ...aktuellePreise,
+                                    [annahmestelle.id]:
+                                      event
+                                        .target
+                                        .value,
+                                  }),
+                                );
+                                setFehler(
+                                  "",
+                                );
+                              }}
+                              placeholder="Kein Preis"
+                              className="w-full rounded-xl border border-slate-300 px-4 py-3 pr-10 text-slate-950"
+                            />
+
+                            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 font-bold text-slate-500">
+                              €
+                            </span>
+                          </div>
+                        </label>
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="flex flex-wrap gap-3 md:col-span-2">
               <button
                 type="submit"
@@ -358,12 +751,14 @@ export default function ArtikelVerwaltungPage() {
               >
                 {speichert
                   ? "Wird gespeichert ..."
-                  : bearbeiteteArtikelId === null
+                  : bearbeiteteArtikelId ===
+                      null
                     ? "Artikel hinzufügen"
                     : "Änderungen speichern"}
               </button>
 
-              {bearbeiteteArtikelId !== null && (
+              {bearbeiteteArtikelId !==
+                null && (
                 <button
                   type="button"
                   onClick={() => {
@@ -380,7 +775,7 @@ export default function ArtikelVerwaltungPage() {
           </form>
         </div>
 
-        <div className="mt-8 rounded-3xl bg-white p-6 shadow">
+        <div className="mt-8 rounded-3xl bg-white p-5 shadow sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-slate-950">
@@ -388,7 +783,7 @@ export default function ArtikelVerwaltungPage() {
               </h2>
 
               <p className="mt-1 text-sm text-slate-600">
-                Aktive Artikel erscheinen später automatisch in der Kasse.
+                Hinterlegte Preise werden je Annahmestelle angezeigt.
               </p>
             </div>
 
@@ -403,75 +798,132 @@ export default function ArtikelVerwaltungPage() {
             </div>
           )}
 
-          {!laedt && artikel.length === 0 && (
-            <div className="mt-6 rounded-xl bg-orange-100 p-5 text-orange-800">
-              Es sind noch keine Artikel vorhanden.
-            </div>
-          )}
+          {!laedt &&
+            artikel.length === 0 && (
+              <div className="mt-6 rounded-xl bg-orange-100 p-5 text-orange-800">
+                Es sind noch keine Artikel vorhanden.
+              </div>
+            )}
 
-          {!laedt && artikel.length > 0 && (
-            <div className="mt-6 space-y-3">
-              {artikel.map(
-                (artikelEintrag) => (
-                  <div
-                    key={artikelEintrag.id}
-                    className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 ${
-                      artikelEintrag.aktiv
-                        ? "border-slate-200 bg-white"
-                        : "border-slate-200 bg-slate-100 opacity-70"
-                    }`}
-                  >
-                    <div>
-                      <p className="font-bold text-slate-950">
-                        {artikelEintrag.name}
-                      </p>
+          {!laedt &&
+            artikel.length > 0 && (
+              <div className="mt-6 space-y-3">
+                {artikel.map(
+                  (artikelEintrag) => {
+                    const preise =
+                      preiseNachArtikel.get(
+                        artikelEintrag.id,
+                      ) ?? [];
 
-                      <p className="mt-1 text-sm text-slate-500">
-                        Reihenfolge:{" "}
-                        {artikelEintrag.sortierung}
-                        {" · "}
-                        {artikelEintrag.aktiv
-                          ? "Aktiv"
-                          : "Deaktiviert"}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          artikelBearbeiten(
-                            artikelEintrag,
-                          )
+                    return (
+                      <div
+                        key={
+                          artikelEintrag.id
                         }
-                        className="rounded-xl border border-blue-300 px-4 py-2 text-sm font-bold text-blue-700"
-                      >
-                        Bearbeiten
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void artikelStatusAendern(
-                            artikelEintrag,
-                          )
-                        }
-                        className={`rounded-xl px-4 py-2 text-sm font-bold ${
+                        className={`rounded-2xl border p-4 ${
                           artikelEintrag.aktiv
-                            ? "bg-red-100 text-red-700"
-                            : "bg-green-100 text-green-700"
+                            ? "border-slate-200 bg-white"
+                            : "border-slate-200 bg-slate-100 opacity-70"
                         }`}
                       >
-                        {artikelEintrag.aktiv
-                          ? "Deaktivieren"
-                          : "Aktivieren"}
-                      </button>
-                    </div>
-                  </div>
-                ),
-              )}
-            </div>
-          )}
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div>
+                            <p className="font-bold text-slate-950">
+                              {
+                                artikelEintrag.name
+                              }
+                            </p>
+
+                            <p className="mt-1 text-sm text-slate-500">
+                              Reihenfolge:{" "}
+                              {
+                                artikelEintrag.sortierung
+                              }
+                              {" · "}
+                              {artikelEintrag.aktiv
+                                ? "Aktiv"
+                                : "Deaktiviert"}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                artikelBearbeiten(
+                                  artikelEintrag,
+                                )
+                              }
+                              className="rounded-xl border border-blue-300 px-4 py-2 text-sm font-bold text-blue-700"
+                            >
+                              Bearbeiten
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void artikelStatusAendern(
+                                  artikelEintrag,
+                                )
+                              }
+                              className={`rounded-xl px-4 py-2 text-sm font-bold ${
+                                artikelEintrag.aktiv
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-green-100 text-green-700"
+                              }`}
+                            >
+                              {artikelEintrag.aktiv
+                                ? "Deaktivieren"
+                                : "Aktivieren"}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {annahmestellen.map(
+                            (
+                              annahmestelle,
+                            ) => {
+                              const preis =
+                                preise.find(
+                                  (
+                                    eintrag,
+                                  ) =>
+                                    eintrag.annahmestelle_id ===
+                                    annahmestelle.id,
+                                );
+
+                              return (
+                                <span
+                                  key={
+                                    annahmestelle.id
+                                  }
+                                  className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                                    preis
+                                      ? "bg-blue-50 text-blue-800"
+                                      : "bg-slate-100 text-slate-500"
+                                  }`}
+                                >
+                                  {
+                                    annahmestelle.name
+                                  }
+                                  :{" "}
+                                  {preis
+                                    ? preisFormatieren(
+                                        preis.preis,
+                                      )
+                                    : "kein Preis"}
+                                </span>
+                              );
+                            },
+                          )}
+                        </div>
+                      </div>
+                    );
+                  },
+                )}
+              </div>
+            )}
         </div>
       </section>
     </main>
