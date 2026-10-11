@@ -43,6 +43,12 @@ type ArtikelAnnahmestellenPreis = {
   preis: number;
 };
 
+type KassenArtikelPosition = ArtikelPosition & {
+  einzelpreis?: number | null;
+};
+
+type PositionPreisEingaben = Record<number, string>;
+
 type OffenerSammelschein = {
   id: number;
   annahmestelle_id: number;
@@ -193,7 +199,12 @@ export default function KassePage() {
     useState("");
 
   const [positionen, setPositionen] =
-    useState<ArtikelPosition[]>([]);
+    useState<KassenArtikelPosition[]>([]);
+
+  const [
+    positionPreisEingaben,
+    setPositionPreisEingaben,
+  ] = useState<PositionPreisEingaben>({});
 
   const [
     positionFotos,
@@ -761,21 +772,38 @@ export default function KassePage() {
       return;
     }
 
-    setPositionen(
-      (aktuellePositionen) => [
-        ...aktuellePositionen,
-        {
-          id: Date.now(),
-          menge: mengeAlsZahl,
-          artikel: ausgewaehlterArtikel,
-        },
-      ],
-    );
-
     const hinterlegterStueckpreis =
       artikelPreisFuerName(
         ausgewaehlterArtikel,
       );
+
+    const neuePositionId =
+      Date.now();
+
+    setPositionen(
+      (aktuellePositionen) => [
+        ...aktuellePositionen,
+        {
+          id: neuePositionId,
+          menge: mengeAlsZahl,
+          artikel: ausgewaehlterArtikel,
+          einzelpreis:
+            hinterlegterStueckpreis,
+        },
+      ],
+    );
+
+    setPositionPreisEingaben(
+      (aktuelleEingaben) => ({
+        ...aktuelleEingaben,
+        [neuePositionId]:
+          hinterlegterStueckpreis !== null
+            ? hinterlegterStueckpreis
+                .toFixed(2)
+                .replace(".", ",")
+            : "",
+      }),
+    );
 
     if (
       hinterlegterStueckpreis !== null
@@ -901,6 +929,83 @@ export default function KassePage() {
     );
   }
 
+  function einzelpreisEingabeAendern(
+    positionId: number,
+    neuerText: string,
+  ) {
+    setPositionPreisEingaben(
+      (aktuelleEingaben) => ({
+        ...aktuelleEingaben,
+        [positionId]: neuerText,
+      }),
+    );
+
+    const position =
+      positionen.find(
+        (eintrag) =>
+          eintrag.id === positionId,
+      );
+
+    if (!position) {
+      return;
+    }
+
+    const bereinigt = neuerText
+      .replace("€", "")
+      .replace(",", ".")
+      .trim();
+
+    const neuerEinzelpreis =
+      bereinigt === ""
+        ? null
+        : Number(bereinigt);
+
+    if (
+      neuerEinzelpreis !== null &&
+      (!Number.isFinite(
+        neuerEinzelpreis,
+      ) ||
+        neuerEinzelpreis < 0)
+    ) {
+      return;
+    }
+
+    const alterEinzelpreis =
+      position.einzelpreis ?? 0;
+
+    const neuerPreisFuerBerechnung =
+      neuerEinzelpreis ?? 0;
+
+    const differenz =
+      (neuerPreisFuerBerechnung -
+        alterEinzelpreis) *
+      position.menge;
+
+    setPositionen(
+      (aktuellePositionen) =>
+        aktuellePositionen.map(
+          (eintrag) =>
+            eintrag.id === positionId
+              ? {
+                  ...eintrag,
+                  einzelpreis:
+                    neuerEinzelpreis,
+                }
+              : eintrag,
+        ),
+    );
+
+    if (differenz !== 0) {
+      setPreis((aktuellerPreis) =>
+        preisZahlZuText(
+          preisTextZuZahl(
+            aktuellerPreis,
+          ) + differenz,
+        ),
+      );
+    }
+  }
+
   function artikelPositionLoeschen(
     id: number,
   ) {
@@ -911,20 +1016,19 @@ export default function KassePage() {
       );
 
     if (zuLoeschendePosition) {
-      const hinterlegterStueckpreis =
-        artikelPreisFuerName(
-          zuLoeschendePosition.artikel,
-        );
+      const positionsEinzelpreis =
+        zuLoeschendePosition.einzelpreis ??
+        null;
 
       if (
-        hinterlegterStueckpreis !== null
+        positionsEinzelpreis !== null
       ) {
         const bisherigerGesamtpreis =
           preisTextZuZahl(preis);
 
         const neuerGesamtpreis =
           bisherigerGesamtpreis -
-          hinterlegterStueckpreis *
+          positionsEinzelpreis *
             zuLoeschendePosition.menge;
 
         setPreis(
@@ -934,6 +1038,18 @@ export default function KassePage() {
         );
       }
     }
+
+    setPositionPreisEingaben(
+      (aktuelleEingaben) => {
+        const neueEingaben = {
+          ...aktuelleEingaben,
+        };
+
+        delete neueEingaben[id];
+
+        return neueEingaben;
+      },
+    );
 
     setPositionen(
       (aktuellePositionen) =>
@@ -988,6 +1104,7 @@ export default function KassePage() {
     setFreierArtikel("");
     setPreis("");
     setPositionen([]);
+    setPositionPreisEingaben({});
     setBearbeiteteId(null);
   }
 
@@ -1188,9 +1305,38 @@ export default function KassePage() {
         .replace(".", ","),
     );
 
-    setPositionen([
-      ...sammelschein.positionen,
-    ]);
+    const bearbeitetePositionen =
+      sammelschein.positionen.map(
+        (position) =>
+          position as KassenArtikelPosition,
+      );
+
+    setPositionen(
+      bearbeitetePositionen,
+    );
+
+    const neuePreisEingaben:
+      PositionPreisEingaben = {};
+
+    bearbeitetePositionen.forEach(
+      (position) => {
+        neuePreisEingaben[
+          position.id
+        ] =
+          position.einzelpreis !==
+            null &&
+          position.einzelpreis !==
+            undefined
+            ? position.einzelpreis
+                .toFixed(2)
+                .replace(".", ",")
+            : "";
+      },
+    );
+
+    setPositionPreisEingaben(
+      neuePreisEingaben,
+    );
 
     setMenge("");
     setArtikel("Hemd");
@@ -1604,6 +1750,10 @@ export default function KassePage() {
                 position.artikel,
               menge:
                 position.menge,
+              einzelpreis:
+                (
+                  position as KassenArtikelPosition
+                ).einzelpreis ?? null,
             })
             .select("id")
             .single();
@@ -2544,13 +2694,70 @@ export default function KassePage() {
                       key={position.id}
                       className="rounded-lg bg-white px-4 py-3 text-slate-900"
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <span className="font-semibold">
-                          {position.menge}{" "}
-                          {artikelText(
-                            position,
-                          )}
-                        </span>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-[220px] flex-1">
+                          <p className="font-semibold">
+                            {position.menge}{" "}
+                            {artikelText(
+                              position,
+                            )}
+                          </p>
+
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <label className="block">
+                              <span className="text-xs font-bold text-slate-600">
+                                Stückpreis
+                              </span>
+
+                              <div className="relative mt-1">
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={
+                                    positionPreisEingaben[
+                                      position.id
+                                    ] ?? ""
+                                  }
+                                  onChange={(event) =>
+                                    einzelpreisEingabeAendern(
+                                      position.id,
+                                      event.target.value,
+                                    )
+                                  }
+                                  placeholder="Preis"
+                                  className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-9 font-semibold text-slate-950"
+                                />
+
+                                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-500">
+                                  €
+                                </span>
+                              </div>
+                            </label>
+
+                            <div>
+                              <span className="text-xs font-bold text-slate-600">
+                                Position gesamt
+                              </span>
+
+                              <div className="mt-1 rounded-lg bg-slate-100 px-3 py-2 font-bold text-slate-950">
+                                {position.einzelpreis !==
+                                  null &&
+                                position.einzelpreis !==
+                                  undefined
+                                  ? `${(
+                                      position.einzelpreis *
+                                      position.menge
+                                    )
+                                      .toFixed(2)
+                                      .replace(
+                                        ".",
+                                        ",",
+                                      )} €`
+                                  : "—"}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
 
                         <div className="flex flex-wrap items-center gap-2">
                           <label className="cursor-pointer rounded-lg bg-blue-700 px-3 py-2 text-sm font-bold text-white">
