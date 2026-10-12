@@ -1539,6 +1539,185 @@ export default function KassePage() {
       return;
     }
 
+    const aktuelleSammelscheinNummern =
+      sammelscheine.map(
+        (sammelschein) =>
+          sammelschein.nummer.trim(),
+      );
+
+    const doppelteNummernImEntwurf =
+      aktuelleSammelscheinNummern.filter(
+        (nummer, index, alleNummern) =>
+          alleNummern.indexOf(nummer) !==
+          index,
+      );
+
+    if (
+      doppelteNummernImEntwurf.length >
+      0
+    ) {
+      const eindeutigeDoppelteNummern =
+        Array.from(
+          new Set(
+            doppelteNummernImEntwurf,
+          ),
+        );
+
+      setSupabaseFehler(
+        `Diese Sammelschein-Nummer${
+          eindeutigeDoppelteNummern.length ===
+          1
+            ? ""
+            : "n"
+        } ist im aktuellen Lieferschein doppelt vorhanden: ${eindeutigeDoppelteNummern.join(
+          ", ",
+        )}. Bitte korrigiere den Entwurf.`,
+      );
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+
+      return;
+    }
+
+    const {
+      data:
+        vorhandeneSammelscheine,
+      error:
+        vorhandeneSammelscheineFehler,
+    } = await supabase
+      .from("sammelscheine")
+      .select(
+        "nummer, lieferschein_id",
+      )
+      .in(
+        "nummer",
+        aktuelleSammelscheinNummern,
+      );
+
+    if (
+      vorhandeneSammelscheineFehler
+    ) {
+      setSupabaseFehler(
+        `Die Sammelschein-Nummern konnten vor dem Speichern nicht geprüft werden: ${vorhandeneSammelscheineFehler.message}`,
+      );
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+
+      return;
+    }
+
+    if (
+      vorhandeneSammelscheine &&
+      vorhandeneSammelscheine.length >
+        0
+    ) {
+      const lieferscheinIds =
+        Array.from(
+          new Set(
+            vorhandeneSammelscheine
+              .map(
+                (eintrag) =>
+                  Number(
+                    eintrag.lieferschein_id,
+                  ),
+              )
+              .filter(
+                (id) =>
+                  Number.isInteger(id) &&
+                  id > 0,
+              ),
+          ),
+        );
+
+      const lieferscheinNummern =
+        new Map<number, string>();
+
+      if (
+        lieferscheinIds.length > 0
+      ) {
+        const {
+          data:
+            vorhandeneLieferscheine,
+          error:
+            vorhandeneLieferscheineFehler,
+        } = await supabase
+          .from("lieferscheine")
+          .select("id, nummer")
+          .in("id", lieferscheinIds);
+
+        if (
+          vorhandeneLieferscheineFehler
+        ) {
+          setSupabaseFehler(
+            `Die bereits verwendeten Sammelscheine wurden gefunden, aber die zugehörigen Lieferscheine konnten nicht geladen werden: ${vorhandeneLieferscheineFehler.message}`,
+          );
+
+          window.scrollTo({
+            top: 0,
+            behavior: "smooth",
+          });
+
+          return;
+        }
+
+        (
+          vorhandeneLieferscheine ??
+          []
+        ).forEach(
+          (lieferschein) => {
+            lieferscheinNummern.set(
+              Number(
+                lieferschein.id,
+              ),
+              String(
+                lieferschein.nummer,
+              ),
+            );
+          },
+        );
+      }
+
+      const fehlerZeilen =
+        vorhandeneSammelscheine.map(
+          (eintrag) => {
+            const lieferscheinNummer =
+              lieferscheinNummern.get(
+                Number(
+                  eintrag.lieferschein_id,
+                ),
+              );
+
+            return lieferscheinNummer
+              ? `Sammelschein ${eintrag.nummer} wurde bereits in Lieferschein ${lieferscheinNummer} verwendet.`
+              : `Sammelschein ${eintrag.nummer} wurde bereits verwendet.`;
+          },
+        );
+
+      setSupabaseFehler(
+        `${fehlerZeilen.join(
+          " ",
+        )} Bitte entferne oder korrigiere ${
+          vorhandeneSammelscheine.length ===
+          1
+            ? "diesen Sammelschein"
+            : "diese Sammelscheine"
+        }, bevor du den Lieferschein fertigstellst.`,
+      );
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+
+      return;
+    }
+
     const kundenText =
       kundenModus ===
         "gespeicherter_kunde" &&
