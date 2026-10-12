@@ -1,5 +1,5 @@
 "use client";
-
+import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -12,13 +12,11 @@ import type {
   ArtikelPosition,
   FertigerLieferschein,
 } from "../../types/lieferschein";
-
 type DatenbankPosition = {
   id: number;
   artikel: string;
   menge: number;
 };
-
 type DatenbankSammelschein = {
   id: number;
   nummer: string;
@@ -29,16 +27,13 @@ type DatenbankSammelschein = {
     | DatenbankPosition[]
     | null;
 };
-
 type SammelscheinBestaetigung = {
   bestaetigt: boolean;
   bestaetigtAm: string | null;
 };
-
 type DatenbankAnnahmestelle = {
   name: string;
 };
-
 type DatenbankLieferschein = {
   id: number;
   annahmestelle_id: number | null;
@@ -56,7 +51,6 @@ type DatenbankLieferschein = {
     | DatenbankSammelschein[]
     | null;
 };
-
 type LieferscheinFoto = {
   id: number;
   sammelscheinPositionId: number;
@@ -67,7 +61,6 @@ type LieferscheinFoto = {
   erstelltAm: string;
   signierteUrl: string;
 };
-
 const artikelMehrzahl: Record<string, string> = {
   Hemd: "Hemden",
   Hose: "Hosen",
@@ -76,7 +69,6 @@ const artikelMehrzahl: Record<string, string> = {
   Mantel: "Mäntel",
   Kleid: "Kleider",
 };
-
 function zahlUmwandeln(
   wert: number | string | null | undefined,
 ) {
@@ -84,10 +76,8 @@ function zahlUmwandeln(
     typeof wert === "number"
       ? wert
       : Number(String(wert ?? "0").replace(",", "."));
-
   return Number.isFinite(zahl) ? zahl : 0;
 }
-
 function annahmestellenNameErmitteln(
   annahmestellen:
     | DatenbankAnnahmestelle
@@ -100,13 +90,11 @@ function annahmestellenNameErmitteln(
       "Unbekannte Annahmestelle"
     );
   }
-
   return (
     annahmestellen?.name ??
     "Unbekannte Annahmestelle"
   );
 }
-
 function lieferscheinUmwandeln(
   daten: DatenbankLieferschein,
 ): FertigerLieferschein {
@@ -135,60 +123,45 @@ function lieferscheinUmwandeln(
     ),
   };
 }
-
 export default function LieferscheinDetailPage() {
   const {
     aktuellerBenutzer,
   } = useBenutzer();
-
   const params = useParams<{ nummer: string }>();
-
   const [lieferschein, setLieferschein] =
     useState<FertigerLieferschein | null>(null);
-
   const [datenGeladen, setDatenGeladen] =
     useState(false);
-
   const [fehler, setFehler] = useState("");
-
   const [fotos, setFotos] =
     useState<LieferscheinFoto[]>([]);
-
   const [
     fotoWirdGeloescht,
     setFotoWirdGeloescht,
   ] = useState<number | null>(null);
-
   const [fotoFehler, setFotoFehler] =
     useState("");
-
   const [
     sammelscheinBestaetigungen,
     setSammelscheinBestaetigungen,
   ] = useState<Record<number, SammelscheinBestaetigung>>({});
-
   const [
     bestaetigungWirdGespeichert,
     setBestaetigungWirdGespeichert,
   ] = useState<number | null>(null);
-
   const [
     bestaetigungsFehler,
     setBestaetigungsFehler,
   ] = useState("");
-
   useEffect(() => {
     let istAktiv = true;
-
     async function lieferscheinLaden() {
       setDatenGeladen(false);
       setFehler("");
-
       try {
         const gesuchteNummer = decodeURIComponent(
           params.nummer,
         );
-
         const { data, error } = await supabase
           .from("lieferscheine")
           .select(`
@@ -218,51 +191,41 @@ export default function LieferscheinDetailPage() {
           `)
           .eq("nummer", gesuchteNummer)
           .single();
-
         if (!istAktiv) {
           return;
         }
-
         if (error) {
           console.error(
             "Der Lieferschein konnte nicht geladen werden:",
             error,
           );
-
           setFehler(error.message);
           setLieferschein(null);
           return;
         }
-
         if (!data) {
           setLieferschein(null);
           return;
         }
-
         const datenbankLieferschein =
           data as DatenbankLieferschein;
-
         if (
           aktuellerBenutzer?.rolle ===
           "annahmestelle"
         ) {
           const annahmestellenId =
             aktuellerBenutzer.annahmestelleId;
-
           const status =
             datenbankLieferschein.status
               .trim()
               .toLowerCase();
-
           const istAbgeschlossen =
             status === "fertig" ||
             status === "geliefert";
-
           const istEigeneAnnahmestelle =
             annahmestellenId !== null &&
             datenbankLieferschein.annahmestelle_id ===
               annahmestellenId;
-
           if (
             !istEigeneAnnahmestelle ||
             !istAbgeschlossen
@@ -274,14 +237,11 @@ export default function LieferscheinDetailPage() {
             return;
           }
         }
-
         const geladenerLieferschein =
           lieferscheinUmwandeln(
             datenbankLieferschein,
           );
-
         setLieferschein(geladenerLieferschein);
-
         setSammelscheinBestaetigungen(
           Object.fromEntries(
             (datenbankLieferschein.sammelscheine ?? []).map(
@@ -297,7 +257,6 @@ export default function LieferscheinDetailPage() {
             ),
           ),
         );
-
         const {
           data: fotoDaten,
           error: fotoAbfrageFehler,
@@ -319,20 +278,17 @@ export default function LieferscheinDetailPage() {
           .order("erstellt_am", {
             ascending: true,
           });
-
         if (fotoAbfrageFehler) {
           console.error(
             "Die Lieferscheinfotos konnten nicht geladen werden:",
             fotoAbfrageFehler,
           );
-
           setFotoFehler(
             fotoAbfrageFehler.message,
           );
           setFotos([]);
           return;
         }
-
         const geladeneFotos =
           await Promise.all(
             (fotoDaten ?? []).map(
@@ -351,13 +307,11 @@ export default function LieferscheinDetailPage() {
                     ),
                     60 * 60,
                   );
-
                 if (signaturFehler) {
                   throw new Error(
                     signaturFehler.message,
                   );
                 }
-
                 return {
                   id: Number(foto.id),
                   sammelscheinPositionId:
@@ -392,7 +346,6 @@ export default function LieferscheinDetailPage() {
               },
             ),
           );
-
         setFotos(geladeneFotos);
         setFotoFehler("");
       } catch (unbekannterFehler) {
@@ -400,17 +353,14 @@ export default function LieferscheinDetailPage() {
           "Der Lieferschein konnte nicht geladen werden:",
           unbekannterFehler,
         );
-
         if (!istAktiv) {
           return;
         }
-
         setFehler(
           unbekannterFehler instanceof Error
             ? unbekannterFehler.message
             : "Der Lieferschein konnte nicht geladen werden.",
         );
-
         setLieferschein(null);
       } finally {
         if (istAktiv) {
@@ -418,41 +368,33 @@ export default function LieferscheinDetailPage() {
         }
       }
     }
-
     void lieferscheinLaden();
-
     return () => {
       istAktiv = false;
     };
   }, [params.nummer, aktuellerBenutzer]);
-
   function artikelText(
     position: ArtikelPosition,
   ) {
     if (position.menge === 1) {
       return position.artikel;
     }
-
     return (
       artikelMehrzahl[position.artikel] ??
       position.artikel
     );
   }
-
   function geldFormatieren(betrag: number) {
     return new Intl.NumberFormat("de-DE", {
       style: "currency",
       currency: "EUR",
     }).format(betrag);
   }
-
   function datumFormatieren(datum: string) {
     const datumAlsObjekt = new Date(datum);
-
     if (Number.isNaN(datumAlsObjekt.getTime())) {
       return "Unbekanntes Datum";
     }
-
     return datumAlsObjekt.toLocaleString("de-DE", {
       day: "2-digit",
       month: "2-digit",
@@ -461,7 +403,6 @@ export default function LieferscheinDetailPage() {
       minute: "2-digit",
     });
   }
-
   function fotosFuerPosition(
     positionsId: number,
   ) {
@@ -471,7 +412,6 @@ export default function LieferscheinDetailPage() {
         positionsId,
     );
   }
-
   async function fotoLoeschen(
     foto: LieferscheinFoto,
   ) {
@@ -481,44 +421,36 @@ export default function LieferscheinDetailPage() {
     ) {
       return;
     }
-
     const bestaetigt =
       window.confirm(
         `Möchtest du das Foto „${foto.dateiname}“ wirklich löschen?`,
       );
-
     if (!bestaetigt) {
       return;
     }
-
     setFotoWirdGeloescht(foto.id);
     setFotoFehler("");
-
     try {
       const {
         error: speicherFehler,
       } = await supabase.storage
         .from("lieferschein-fotos")
         .remove([foto.dateipfad]);
-
       if (speicherFehler) {
         throw new Error(
           speicherFehler.message,
         );
       }
-
       const { error: datenbankFehler } =
         await supabase
           .from("lieferschein_fotos")
           .delete()
           .eq("id", foto.id);
-
       if (datenbankFehler) {
         throw new Error(
           datenbankFehler.message,
         );
       }
-
       setFotos(
         (aktuelleFotos) =>
           aktuelleFotos.filter(
@@ -531,7 +463,6 @@ export default function LieferscheinDetailPage() {
         "Das Foto konnte nicht gelöscht werden:",
         unbekannterFehler,
       );
-
       setFotoFehler(
         unbekannterFehler instanceof
           Error
@@ -542,7 +473,6 @@ export default function LieferscheinDetailPage() {
       setFotoWirdGeloescht(null);
     }
   }
-
   async function sammelscheinBestaetigungUmschalten(
     sammelscheinId: number,
   ) {
@@ -552,20 +482,16 @@ export default function LieferscheinDetailPage() {
     ) {
       return;
     }
-
     const bisher =
       sammelscheinBestaetigungen[sammelscheinId] ?? {
         bestaetigt: false,
         bestaetigtAm: null,
       };
-
     const neuerStatus = !bisher.bestaetigt;
     const bestaetigtAm =
       neuerStatus ? new Date().toISOString() : null;
-
     setBestaetigungWirdGespeichert(sammelscheinId);
     setBestaetigungsFehler("");
-
     const { error } = await supabase
       .from("sammelscheine")
       .update({
@@ -573,7 +499,6 @@ export default function LieferscheinDetailPage() {
         annahmestelle_bestaetigt_am: bestaetigtAm,
       })
       .eq("id", sammelscheinId);
-
     if (error) {
       setBestaetigungsFehler(
         `Der Haken konnte nicht gespeichert werden: ${error.message}`,
@@ -581,7 +506,6 @@ export default function LieferscheinDetailPage() {
       setBestaetigungWirdGespeichert(null);
       return;
     }
-
     setSammelscheinBestaetigungen((aktuell) => ({
       ...aktuell,
       [sammelscheinId]: {
@@ -589,10 +513,8 @@ export default function LieferscheinDetailPage() {
         bestaetigtAm,
       },
     }));
-
     setBestaetigungWirdGespeichert(null);
   }
-
   const gesamtTeile =
     lieferschein?.sammelscheine.reduce(
       (summe, sammelschein) => {
@@ -602,36 +524,29 @@ export default function LieferscheinDetailPage() {
               positionsSumme + position.menge,
             0,
           );
-
         return summe + teileDesSammelscheins;
       },
       0,
     ) ?? 0;
-
   const gesamtBetrag =
     lieferschein?.sammelscheine.reduce(
       (summe, sammelschein) =>
         summe + sammelschein.preis,
       0,
     ) ?? 0;
-
   const darfLieferungKontrollieren =
     aktuellerBenutzer?.rolle === "annahmestelle" ||
     aktuellerBenutzer?.rolle === "admin";
-
   const anzahlBestaetigt =
     lieferschein?.sammelscheine.filter(
       (sammelschein) =>
         sammelscheinBestaetigungen[sammelschein.id]?.bestaetigt === true,
     ).length ?? 0;
-
   const anzahlSammelscheine =
     lieferschein?.sammelscheine.length ?? 0;
-
   const lieferungVollstaendigKontrolliert =
     anzahlSammelscheine > 0 &&
     anzahlBestaetigt === anzahlSammelscheine;
-
   return (
     <ZugriffsSchutz
       berechtigung="lieferscheine_anzeigen"
@@ -640,32 +555,42 @@ export default function LieferscheinDetailPage() {
       zurueckLink="/lieferscheine"
       zurueckText="Zur Lieferscheinübersicht"
     >
-      <main className="min-h-screen bg-slate-50 print:bg-white">
-      <header className="bg-slate-950 px-6 py-5 text-white print:hidden">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-sm text-slate-300">
-              Washly
-            </p>
-
-            <h1 className="text-2xl font-bold">
-              Lieferschein-Details
-            </h1>
-
-            <p className="mt-1 text-sm text-slate-300">
-              Daten werden aus Supabase geladen
-            </p>
+      <main className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-cyan-50/30 print:bg-white">
+      <header className="relative overflow-hidden bg-slate-950 px-5 py-7 text-white print:hidden sm:px-6 sm:py-9">
+        <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-cyan-400/15 blur-3xl" />
+        <div className="absolute -bottom-24 left-1/4 h-56 w-56 rounded-full bg-blue-500/15 blur-3xl" />
+        <div className="relative mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-5">
+          <div className="flex items-center gap-4">
+            <div className="rounded-2xl bg-white p-2 shadow-lg">
+              <Image
+                src="/washly-logo.png"
+                alt="Washly Logo"
+                width={72}
+                height={72}
+                priority
+                className="h-14 w-14 rounded-xl object-contain sm:h-16 sm:w-16"
+              />
+            </div>
+            <div>
+              <p className="text-sm font-bold uppercase tracking-[0.2em] text-cyan-300">
+                Washly
+              </p>
+              <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">
+                Lieferschein
+              </h1>
+              <p className="mt-1 text-sm text-slate-300">
+                Übersicht, Kontrolle und Druckansicht
+              </p>
+            </div>
           </div>
-
           <Link
             href="/lieferscheine"
-            className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-950"
+            className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-950 shadow-sm transition hover:bg-slate-100"
           >
             Zurück zu den Lieferscheinen
           </Link>
         </div>
       </header>
-
       <section className="mx-auto max-w-5xl px-6 py-10 print:max-w-none print:px-0 print:py-0">
         {!datenGeladen && (
           <div className="rounded-2xl bg-white p-6 shadow">
@@ -674,17 +599,14 @@ export default function LieferscheinDetailPage() {
             </p>
           </div>
         )}
-
         {datenGeladen && fehler && (
           <div className="rounded-2xl bg-red-100 p-6 text-red-800 shadow">
             <h2 className="text-xl font-bold">
               Lieferschein konnte nicht geladen werden
             </h2>
-
             <p className="mt-2 text-sm">
               {fehler}
             </p>
-
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 type="button"
@@ -695,7 +617,6 @@ export default function LieferscheinDetailPage() {
               >
                 Erneut versuchen
               </button>
-
               <Link
                 href="/lieferscheine"
                 className="rounded-xl border border-red-300 bg-white px-5 py-3 font-bold text-red-800"
@@ -705,7 +626,6 @@ export default function LieferscheinDetailPage() {
             </div>
           </div>
         )}
-
         {bestaetigungsFehler && (
           <div className="mb-6 rounded-2xl bg-red-100 p-5 text-red-800 shadow print:hidden">
             <p className="font-bold">
@@ -716,19 +636,16 @@ export default function LieferscheinDetailPage() {
             </p>
           </div>
         )}
-
         {fotoFehler && (
           <div className="mb-6 rounded-2xl bg-yellow-100 p-5 text-yellow-900 shadow print:hidden">
             <p className="font-bold">
               Fotos konnten nicht vollständig geladen werden
             </p>
-
             <p className="mt-1 text-sm">
               {fotoFehler}
             </p>
           </div>
         )}
-
         {datenGeladen &&
           !fehler &&
           !lieferschein && (
@@ -736,12 +653,10 @@ export default function LieferscheinDetailPage() {
               <h2 className="text-xl font-bold text-slate-900">
                 Lieferschein nicht gefunden
               </h2>
-
               <p className="mt-2 text-slate-600">
                 Unter dieser Nummer wurde in Supabase
                 kein Lieferschein gefunden.
               </p>
-
               <Link
                 href="/lieferscheine"
                 className="mt-6 inline-block rounded-xl bg-slate-950 px-5 py-3 font-bold text-white"
@@ -750,14 +665,12 @@ export default function LieferscheinDetailPage() {
               </Link>
             </div>
           )}
-
         {datenGeladen &&
           !fehler &&
           lieferschein && (
             <>
               <div className="mb-6 flex flex-wrap gap-3 print:hidden">
                 <DruckButton />
-
                 <Link
                   href="/lieferscheine"
                   className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-bold text-slate-700"
@@ -765,48 +678,63 @@ export default function LieferscheinDetailPage() {
                   Zurück
                 </Link>
               </div>
-
               <div className="rounded-2xl bg-white p-6 shadow print:rounded-none print:p-0 print:shadow-none">
-                <div className="hidden border-b border-slate-300 pb-5 print:block">
-                  <p className="text-sm font-semibold text-slate-600">
-                    Washly
-                  </p>
-
-                  <h1 className="mt-1 text-3xl font-bold text-slate-950">
-                    Lieferschein
-                  </h1>
-                </div>
-
-                <div className="flex flex-wrap items-start justify-between gap-4 print:mt-6">
-                  <div>
-                    <p className="text-sm text-slate-600">
-                      Lieferschein-Nummer
+                <div className="hidden border-b-2 border-slate-900 pb-5 print:flex print:items-center print:justify-between print:gap-6">
+                  <div className="flex items-center gap-4">
+                    <Image
+                      src="/washly-logo.png"
+                      alt="Washly Logo"
+                      width={88}
+                      height={88}
+                      className="h-20 w-20 object-contain"
+                    />
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">
+                        Washly
+                      </p>
+                      <h1 className="mt-1 text-3xl font-black text-slate-950">
+                        Lieferschein
+                      </h1>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Belegnummer
                     </p>
-
-                    <h2 className="mt-1 text-3xl font-bold text-slate-900">
+                    <p className="mt-1 text-xl font-black text-slate-950">
                       {lieferschein.nummer}
-                    </h2>
-
-                    <p className="mt-3 text-slate-700">
-                      Annahmestelle:{" "}
-                      <span className="font-semibold">
-                        {lieferschein.annahmestelle}
-                      </span>
-                    </p>
-
-                    <p className="mt-1 text-sm text-slate-500">
-                      Fertiggestellt am{" "}
-                      {datumFormatieren(
-                        lieferschein.fertiggestelltAm,
-                      )}
                     </p>
                   </div>
-
-                  <span className="rounded-full bg-green-100 px-4 py-2 text-sm font-semibold text-green-700 print:border print:border-green-700 print:bg-white">
-                    {lieferschein.status}
-                  </span>
                 </div>
-
+                <div className="grid gap-4 print:mt-6 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 print:rounded-none print:border-slate-300 print:bg-white">
+                    <p className="text-xs font-bold uppercase tracking-wide text-blue-700 print:text-slate-500">
+                      Lieferschein
+                    </p>
+                    <p className="mt-2 text-2xl font-black text-slate-950">
+                      {lieferschein.nummer}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-4 print:rounded-none print:border-slate-300 print:bg-white">
+                    <p className="text-xs font-bold uppercase tracking-wide text-cyan-700 print:text-slate-500">
+                      Annahmestelle
+                    </p>
+                    <p className="mt-2 text-xl font-black text-slate-950">
+                      {lieferschein.annahmestelle}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 print:rounded-none print:border-slate-300 print:bg-white">
+                    <p className="text-xs font-bold uppercase tracking-wide text-emerald-700 print:text-slate-500">
+                      Fertiggestellt
+                    </p>
+                    <p className="mt-2 text-sm font-bold text-slate-950">
+                      {datumFormatieren(lieferschein.fertiggestelltAm)}
+                    </p>
+                    <span className="mt-3 inline-flex rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold text-white print:border print:border-emerald-700 print:bg-white print:text-emerald-700">
+                      {lieferschein.status}
+                    </span>
+                  </div>
+                </div>
                 {darfLieferungKontrollieren &&
                   lieferschein.sammelscheine.length > 0 && (
                   <div className="mt-8 rounded-2xl border border-blue-200 bg-blue-50 p-5 print:hidden">
@@ -823,7 +751,6 @@ export default function LieferscheinDetailPage() {
                         {anzahlBestaetigt} von {anzahlSammelscheine} kontrolliert
                       </span>
                     </div>
-
                     {lieferungVollstaendigKontrolliert && (
                       <div className="mt-4 rounded-xl bg-green-100 p-4 font-bold text-green-800">
                         ✅ Lieferung vollständig kontrolliert
@@ -831,7 +758,6 @@ export default function LieferscheinDetailPage() {
                     )}
                   </div>
                 )}
-
                 {lieferschein.sammelscheine.length ===
                   0 && (
                   <div className="mt-8 rounded-xl bg-yellow-50 p-5 text-yellow-800">
@@ -839,7 +765,6 @@ export default function LieferscheinDetailPage() {
                     Sammelscheine gefunden.
                   </div>
                 )}
-
                 {lieferschein.sammelscheine.length >
                   0 && (
                   <div className="mt-8 space-y-4">
@@ -847,7 +772,7 @@ export default function LieferscheinDetailPage() {
                       (sammelschein) => (
                         <div
                           key={sammelschein.id}
-                          className="break-inside-avoid rounded-xl border border-slate-200 p-5"
+                          className="break-inside-avoid rounded-2xl border border-slate-200 bg-white p-5 shadow-sm print:rounded-none print:shadow-none"
                         >
                           <div className="flex flex-wrap items-start justify-between gap-4">
                             <div className="min-w-0 flex-1">
@@ -874,13 +799,11 @@ export default function LieferscheinDetailPage() {
                                         : ""}
                                   </button>
                                 )}
-
                                 <div>
                                   <h3 className="font-bold text-slate-900">
                                     Sammelschein{" "}
                                     {sammelschein.nummer}
                                   </h3>
-
                                   {darfLieferungKontrollieren &&
                                     sammelscheinBestaetigungen[sammelschein.id]?.bestaetigt && (
                                     <p className="mt-1 text-xs font-semibold text-green-700">
@@ -895,7 +818,6 @@ export default function LieferscheinDetailPage() {
                                   )}
                                 </div>
                               </div>
-
                               <div className="mt-3 space-y-1 text-slate-600">
                                 {sammelschein.positionen
                                   .length === 0 && (
@@ -904,14 +826,12 @@ export default function LieferscheinDetailPage() {
                                     gefunden
                                   </p>
                                 )}
-
                                 {sammelschein.positionen.map(
                                   (position) => {
                                     const positionsFotos =
                                       fotosFuerPosition(
                                         position.id,
                                       );
-
                                     return (
                                       <div
                                         key={
@@ -925,7 +845,6 @@ export default function LieferscheinDetailPage() {
                                             position,
                                           )}
                                         </p>
-
                                         {positionsFotos.length >
                                           0 && (
                                           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 print:hidden">
@@ -941,7 +860,7 @@ export default function LieferscheinDetailPage() {
                                                     href={
                                                       foto.signierteUrl
                                                     }
-                                                    target="_blank"
+                                                    target="\_blank"
                                                     rel="noreferrer"
                                                     className="block"
                                                   >
@@ -955,14 +874,12 @@ export default function LieferscheinDetailPage() {
                                                       className="h-48 w-full object-cover"
                                                     />
                                                   </a>
-
                                                   <div className="p-3">
                                                     <p className="truncate text-xs text-slate-600">
                                                       {
                                                         foto.dateiname
                                                       }
                                                     </p>
-
                                                     {aktuellerBenutzer?.rolle ===
                                                       "admin" && (
                                                       <button
@@ -990,7 +907,6 @@ export default function LieferscheinDetailPage() {
                                             )}
                                           </div>
                                         )}
-
                                         {positionsFotos.length ===
                                           0 && (
                                           <p className="mt-2 text-xs text-slate-400 print:hidden">
@@ -1003,7 +919,6 @@ export default function LieferscheinDetailPage() {
                                 )}
                               </div>
                             </div>
-
                             <p className="font-bold text-green-700 print:text-slate-900">
                               {geldFormatieren(
                                 sammelschein.preis,
@@ -1015,7 +930,6 @@ export default function LieferscheinDetailPage() {
                     )}
                   </div>
                 )}
-
                 <div className="mt-8 break-inside-avoid">
                   <LieferscheinStatistik
                     anzahlSammelscheine={
@@ -1025,26 +939,38 @@ export default function LieferscheinDetailPage() {
                     gesamtBetrag={gesamtBetrag}
                   />
                 </div>
-
-                <div className="mt-12 hidden border-t border-slate-300 pt-5 text-sm text-slate-500 print:block">
+                <div className="mt-6 break-inside-avoid rounded-2xl bg-slate-950 p-6 text-white print:rounded-none print:border-2 print:border-slate-950 print:bg-white print:text-slate-950">
+                  <div className="flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300 print:text-slate-500">
+                        Gesamt
+                      </p>
+                      <p className="mt-2 text-sm text-slate-300 print:text-slate-600">
+                        {lieferschein.sammelscheine.length} Sammelscheine · {gesamtTeile} Teile
+                      </p>
+                    </div>
+                    <p className="text-3xl font-black tracking-tight">
+                      {geldFormatieren(gesamtBetrag)}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-12 hidden border-t border-slate-300 pt-5 text-xs text-slate-500 print:flex print:items-center print:justify-between">
                   <p>Erstellt mit Washly</p>
+                  <p>{lieferschein.nummer}</p>
                 </div>
               </div>
             </>
           )}
       </section>
-
       <style jsx global>{`
         @media print {
           @page {
             size: A4;
             margin: 18mm;
           }
-
           body {
             background: white;
           }
-
           button,
           a {
             display: none !important;
