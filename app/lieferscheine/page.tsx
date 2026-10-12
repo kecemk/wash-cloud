@@ -1,18 +1,15 @@
 "use client";
-
 import Link from "next/link";
 import ZugriffsSchutz from "../components/ZugriffsSchutz";
 import { useBenutzer } from "../context/BenutzerContext";
 import { useEffect, useState } from "react";
 import LieferscheinStatistik from "../components/LieferscheinStatistik";
 import { supabase } from "../lib/supabase";
-
 type DatenbankPosition = {
   id: number;
   artikel: string;
   menge: number;
 };
-
 type DatenbankSammelschein = {
   id: number;
   nummer: string;
@@ -21,11 +18,9 @@ type DatenbankSammelschein = {
     | DatenbankPosition[]
     | null;
 };
-
 type DatenbankAnnahmestelle = {
   name: string;
 };
-
 type DatenbankLieferschein = {
   id: number;
   nummer: string;
@@ -42,20 +37,17 @@ type DatenbankLieferschein = {
     | DatenbankSammelschein[]
     | null;
 };
-
 type ArtikelPosition = {
   id: number;
   menge: number;
   artikel: string;
 };
-
 type Sammelschein = {
   id: number;
   nummer: string;
   positionen: ArtikelPosition[];
   preis: number;
 };
-
 type Lieferschein = {
   id: number;
   nummer: string;
@@ -66,7 +58,6 @@ type Lieferschein = {
   gesamtteile: number;
   sammelscheine: Sammelschein[];
 };
-
 const artikelMehrzahl: Record<string, string> = {
   Hemd: "Hemden",
   Hose: "Hosen",
@@ -75,16 +66,13 @@ const artikelMehrzahl: Record<string, string> = {
   Mantel: "Mäntel",
   Kleid: "Kleider",
 };
-
 function zahlUmwandeln(wert: number | string | null | undefined) {
   const zahl =
     typeof wert === "number"
       ? wert
       : Number(String(wert ?? "0").replace(",", "."));
-
   return Number.isFinite(zahl) ? zahl : 0;
 }
-
 function annahmestellenNameErmitteln(
   annahmestellen:
     | DatenbankAnnahmestelle
@@ -94,10 +82,8 @@ function annahmestellenNameErmitteln(
   if (Array.isArray(annahmestellen)) {
     return annahmestellen[0]?.name ?? "Unbekannte Annahmestelle";
   }
-
   return annahmestellen?.name ?? "Unbekannte Annahmestelle";
 }
-
 function lieferscheinUmwandeln(
   daten: DatenbankLieferschein,
 ): Lieferschein {
@@ -115,7 +101,6 @@ function lieferscheinUmwandeln(
       })),
     }),
   );
-
   const berechneteTeile = sammelscheine.reduce(
     (gesamt, sammelschein) =>
       gesamt +
@@ -125,13 +110,11 @@ function lieferscheinUmwandeln(
       ),
     0,
   );
-
   const berechneterBetrag = sammelscheine.reduce(
     (gesamt, sammelschein) =>
       gesamt + sammelschein.preis,
     0,
   );
-
   return {
     id: daten.id,
     nummer: daten.nummer,
@@ -149,32 +132,26 @@ function lieferscheinUmwandeln(
     sammelscheine,
   };
 }
-
 function artikelText(position: ArtikelPosition) {
   if (position.menge === 1) {
     return position.artikel;
   }
-
   return (
     artikelMehrzahl[position.artikel] ??
     position.artikel
   );
 }
-
 function geldFormatieren(betrag: number) {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
     currency: "EUR",
   }).format(betrag);
 }
-
 function datumFormatieren(datum: string) {
   const datumAlsObjekt = new Date(datum);
-
   if (Number.isNaN(datumAlsObjekt.getTime())) {
     return "Unbekanntes Datum";
   }
-
   return datumAlsObjekt.toLocaleString("de-DE", {
     day: "2-digit",
     month: "2-digit",
@@ -183,49 +160,40 @@ function datumFormatieren(datum: string) {
     minute: "2-digit",
   });
 }
-
 function statusFormatieren(status: string) {
   if (!status) {
     return "Unbekannt";
   }
-
   return (
     status.charAt(0).toUpperCase() +
     status.slice(1).toLowerCase()
   );
 }
-
 export default function LieferscheinePage() {
   const {
     aktuellerBenutzer,
     hatAktuellerBenutzerBerechtigung,
   } = useBenutzer();
-
   const darfKasseAnzeigen =
     hatAktuellerBenutzerBerechtigung(
       "kasse_anzeigen",
     );
-
   const [lieferscheine, setLieferscheine] = useState<
     Lieferschein[]
   >([]);
-
   const [laedt, setLaedt] = useState(true);
   const [fehler, setFehler] = useState("");
-
+  const [suche, setSuche] = useState("");
   useEffect(() => {
     let istAktiv = true;
-
     async function lieferscheineLaden() {
       setLaedt(true);
       setFehler("");
-
       if (!aktuellerBenutzer) {
         setLieferscheine([]);
         setLaedt(false);
         return;
       }
-
       if (
         aktuellerBenutzer.rolle ===
           "annahmestelle" &&
@@ -239,7 +207,6 @@ export default function LieferscheinePage() {
         setLaedt(false);
         return;
       }
-
       let abfrage = supabase
         .from("lieferscheine")
         .select(`
@@ -264,7 +231,6 @@ export default function LieferscheinePage() {
             )
           )
         `);
-
       if (
         aktuellerBenutzer.rolle ===
           "annahmestelle" &&
@@ -276,7 +242,6 @@ export default function LieferscheinePage() {
           aktuellerBenutzer.annahmestelleId,
         );
       }
-
       const { data, error } = await abfrage
         .order("fertiggestellt_am", {
           ascending: false,
@@ -285,37 +250,69 @@ export default function LieferscheinePage() {
         .order("erstellt_am", {
           ascending: false,
         });
-
       if (!istAktiv) {
         return;
       }
-
       if (error) {
         console.error(
           "Die Lieferscheine konnten nicht geladen werden:",
           error,
         );
-
         setFehler(error.message);
         setLieferscheine([]);
         setLaedt(false);
         return;
       }
-
       const geladeneLieferscheine = (
         (data ?? []) as DatenbankLieferschein[]
       ).map(lieferscheinUmwandeln);
-
       setLieferscheine(geladeneLieferscheine);
       setLaedt(false);
     }
-
     void lieferscheineLaden();
-
     return () => {
       istAktiv = false;
     };
   }, [aktuellerBenutzer]);
+  const bereinigteSuche = suche.trim().toLowerCase();
+
+  const gefilterteLieferscheine =
+    bereinigteSuche === ""
+      ? lieferscheine
+      : lieferscheine.filter((lieferschein) => {
+          const lieferscheinTreffer =
+            lieferschein.nummer
+              .toLowerCase()
+              .includes(bereinigteSuche);
+
+          const sammelscheinTreffer =
+            lieferschein.sammelscheine.some(
+              (sammelschein) =>
+                sammelschein.nummer
+                  .toLowerCase()
+                  .includes(bereinigteSuche),
+            );
+
+          return lieferscheinTreffer || sammelscheinTreffer;
+        });
+
+  const gefundeneSammelscheine =
+    bereinigteSuche === ""
+      ? []
+      : gefilterteLieferscheine.flatMap(
+          (lieferschein) =>
+            lieferschein.sammelscheine
+              .filter((sammelschein) =>
+                sammelschein.nummer
+                  .toLowerCase()
+                  .includes(bereinigteSuche),
+              )
+              .map((sammelschein) => ({
+                nummer: sammelschein.nummer,
+                lieferscheinNummer: lieferschein.nummer,
+                annahmestelle: lieferschein.annahmestelle,
+              })),
+        );
 
   return (
     <ZugriffsSchutz
@@ -328,18 +325,15 @@ export default function LieferscheinePage() {
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm text-slate-300">
-              Wash Cloud
+              Washly
             </p>
-
             <h1 className="text-2xl font-bold">
               Lieferscheine
             </h1>
-
             <p className="mt-1 text-sm text-slate-300">
               In Supabase gespeicherte Lieferscheine
             </p>
           </div>
-
           {darfKasseAnzeigen && (
             <Link
               href="/annahmestellen"
@@ -350,8 +344,87 @@ export default function LieferscheinePage() {
           )}
         </div>
       </header>
-
       <section className="mx-auto max-w-5xl px-6 py-10">
+        {!laedt && !fehler && (
+          <div className="mb-6 rounded-2xl bg-white p-5 shadow sm:p-6">
+            <label className="block">
+              <span className="text-sm font-bold text-slate-800">
+                Sammelschein oder Lieferschein suchen
+              </span>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Gib eine Sammelschein-Nummer oder eine Lieferschein-Nummer ein.
+              </p>
+
+              <div className="relative mt-4">
+                <input
+                  type="search"
+                  inputMode="search"
+                  value={suche}
+                  onChange={(event) => setSuche(event.target.value)}
+                  placeholder="z. B. 188 oder LS-000017"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-4 pr-24 text-base font-semibold text-slate-950 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+
+                {suche && (
+                  <button
+                    type="button"
+                    onClick={() => setSuche("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700"
+                  >
+                    Löschen
+                  </button>
+                )}
+              </div>
+            </label>
+
+            {bereinigteSuche !== "" && (
+              <div className="mt-4">
+                {gefilterteLieferscheine.length === 0 ? (
+                  <div className="rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                    Kein passender Sammelschein oder Lieferschein gefunden.
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-blue-50 p-4">
+                    <p className="text-sm font-bold text-blue-900">
+                      {gefilterteLieferscheine.length} passende{gefilterteLieferscheine.length === 1 ? "r" : ""} Lieferschein{gefilterteLieferscheine.length === 1 ? "" : "e"} gefunden
+                    </p>
+
+                    {gefundeneSammelscheine.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {gefundeneSammelscheine.map((treffer) => (
+                          <Link
+                            key={`${treffer.lieferscheinNummer}-${treffer.nummer}`}
+                            href={`/lieferschein/${encodeURIComponent(
+                              treffer.lieferscheinNummer,
+                            )}`}
+                            className="block rounded-lg bg-white px-4 py-3 shadow-sm transition hover:bg-slate-50"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="font-bold text-slate-950">
+                                  Sammelschein {treffer.nummer}
+                                </p>
+                                <p className="mt-1 text-sm text-slate-600">
+                                  {treffer.lieferscheinNummer} · {treffer.annahmestelle}
+                                </p>
+                              </div>
+
+                              <span className="text-sm font-bold text-blue-700">
+                                Öffnen →
+                              </span>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {laedt && (
           <div className="rounded-xl bg-white p-6 shadow">
             <p className="text-slate-600">
@@ -359,15 +432,12 @@ export default function LieferscheinePage() {
             </p>
           </div>
         )}
-
         {!laedt && fehler && (
           <div className="rounded-2xl bg-red-100 p-6 text-red-800">
             <h2 className="font-bold">
               Lieferscheine konnten nicht geladen werden
             </h2>
-
             <p className="mt-2 text-sm">{fehler}</p>
-
             <button
               type="button"
               onClick={() => window.location.reload()}
@@ -377,7 +447,6 @@ export default function LieferscheinePage() {
             </button>
           </div>
         )}
-
         {!laedt &&
           !fehler &&
           lieferscheine.length === 0 && (
@@ -385,12 +454,10 @@ export default function LieferscheinePage() {
               <h2 className="text-xl font-bold text-slate-900">
                 Noch keine Lieferscheine in Supabase
               </h2>
-
               <p className="mt-2 text-slate-600">
                 Fertiggestellte Lieferscheine werden hier
                 automatisch angezeigt.
               </p>
-
               {darfKasseAnzeigen && (
                 <Link
                   href="/annahmestellen"
@@ -401,7 +468,6 @@ export default function LieferscheinePage() {
               )}
             </div>
           )}
-
         {!laedt &&
           !fehler &&
           lieferscheine.length > 0 && (
@@ -410,13 +476,11 @@ export default function LieferscheinePage() {
                 <p className="text-sm text-slate-600">
                   Lieferscheine in der Cloud
                 </p>
-
                 <p className="mt-1 text-3xl font-bold text-slate-900">
                   {lieferscheine.length}
                 </p>
               </div>
-
-              {lieferscheine.map((lieferschein) => (
+              {gefilterteLieferscheine.map((lieferschein) => (
                 <article
                   key={lieferschein.id}
                   className="rounded-2xl bg-white p-6 shadow"
@@ -431,25 +495,21 @@ export default function LieferscheinePage() {
                       >
                         {lieferschein.nummer}
                       </Link>
-
                       <p className="mt-1 text-sm font-semibold text-slate-700">
                         {lieferschein.annahmestelle}
                       </p>
-
                       <p className="mt-1 text-sm text-slate-500">
                         {datumFormatieren(
                           lieferschein.fertiggestelltAm,
                         )}
                       </p>
                     </div>
-
                     <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">
                       {statusFormatieren(
                         lieferschein.status,
                       )}
                     </span>
                   </div>
-
                   {lieferschein.sammelscheine.length ===
                     0 && (
                     <div className="mt-6 rounded-xl bg-yellow-50 p-4 text-sm text-yellow-800">
@@ -457,7 +517,6 @@ export default function LieferscheinePage() {
                       Sammelscheine gefunden.
                     </div>
                   )}
-
                   {lieferschein.sammelscheine.length >
                     0 && (
                     <div className="mt-6 space-y-3">
@@ -473,7 +532,6 @@ export default function LieferscheinePage() {
                                   Sammelschein{" "}
                                   {sammelschein.nummer}
                                 </h3>
-
                                 <div className="mt-2 text-sm text-slate-600">
                                   {sammelschein.positionen
                                     .length === 0 && (
@@ -482,7 +540,6 @@ export default function LieferscheinePage() {
                                       gefunden
                                     </p>
                                   )}
-
                                   {sammelschein.positionen.map(
                                     (position) => (
                                       <p key={position.id}>
@@ -495,7 +552,6 @@ export default function LieferscheinePage() {
                                   )}
                                 </div>
                               </div>
-
                               <p className="font-bold text-green-700">
                                 {geldFormatieren(
                                   sammelschein.preis,
@@ -507,7 +563,6 @@ export default function LieferscheinePage() {
                       )}
                     </div>
                   )}
-
                   <div className="mt-6">
                     <LieferscheinStatistik
                       anzahlSammelscheine={
@@ -521,7 +576,6 @@ export default function LieferscheinePage() {
                       }
                     />
                   </div>
-
                   <Link
                     href={`/lieferschein/${encodeURIComponent(
                       lieferschein.nummer,
