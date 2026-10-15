@@ -142,6 +142,16 @@ type ArtikelUmsatz = {
 };
 
 
+type AnnahmestellenUmsatz = {
+  annahmestelle: string;
+  umsatz: number;
+  teile: number;
+  lieferscheine: number;
+  durchschnittProTeil: number;
+  durchschnittProLieferschein: number;
+};
+
+
 
 type DashboardKennzahlen = {
 
@@ -373,6 +383,9 @@ export default function Home() {
 
   const [artikelUmsatzFehler, setArtikelUmsatzFehler] =
     useState("");
+
+  const [annahmestellenUmsaetze, setAnnahmestellenUmsaetze] =
+    useState<AnnahmestellenUmsatz[]>([]);
 
   const [kassenAuswahlIstOffen, setKassenAuswahlIstOffen] =
 
@@ -608,6 +621,8 @@ export default function Home() {
 
         setArtikelUmsatzFehler("");
 
+        setAnnahmestellenUmsaetze([]);
+
         setDashboardWirdGeladen(false);
 
         setDashboardFehler("");
@@ -763,6 +778,95 @@ export default function Home() {
       }
 
 
+
+      const annahmestellenMap = new Map<
+        string,
+        {
+          umsatz: number;
+          teile: number;
+          lieferscheine: number;
+        }
+      >();
+
+      for (const lieferschein of daten) {
+        const datum =
+          lieferschein.fertiggestellt_am ??
+          lieferschein.erstellt_am;
+
+        const zeit = new Date(datum).getTime();
+
+        if (
+          !Number.isFinite(zeit) ||
+          zeit < monatZeit
+        ) {
+          continue;
+        }
+
+        const annahmestelle =
+          annahmestellenNameErmitteln(
+            lieferschein.annahmestellen,
+          );
+
+        const bisher =
+          annahmestellenMap.get(
+            annahmestelle,
+          ) ?? {
+            umsatz: 0,
+            teile: 0,
+            lieferscheine: 0,
+          };
+
+        bisher.umsatz += zahlUmwandeln(
+          lieferschein.gesamtbetrag,
+        );
+
+        bisher.teile +=
+          lieferschein.gesamtteile ?? 0;
+
+        bisher.lieferscheine += 1;
+
+        annahmestellenMap.set(
+          annahmestelle,
+          bisher,
+        );
+      }
+
+      setAnnahmestellenUmsaetze(
+        Array.from(
+          annahmestellenMap.entries(),
+        )
+          .map(
+            ([
+              annahmestelle,
+              werte,
+            ]): AnnahmestellenUmsatz => ({
+              annahmestelle,
+              umsatz: werte.umsatz,
+              teile: werte.teile,
+              lieferscheine:
+                werte.lieferscheine,
+              durchschnittProTeil:
+                werte.teile > 0
+                  ? werte.umsatz /
+                    werte.teile
+                  : 0,
+              durchschnittProLieferschein:
+                werte.lieferscheine > 0
+                  ? werte.umsatz /
+                    werte.lieferscheine
+                  : 0,
+            }),
+          )
+          .sort(
+            (a, b) =>
+              b.umsatz - a.umsatz ||
+              b.teile - a.teile ||
+              a.annahmestelle.localeCompare(
+                b.annahmestelle,
+                "de",
+              ),
+          ),
+      );
 
       if (monatLieferscheinIds.length === 0) {
         setArtikelUmsaetze([]);
@@ -2330,6 +2434,96 @@ export default function Home() {
               </div>
 
 
+
+              <div className="border-t border-slate-200 bg-slate-50/60 p-6 sm:p-8">
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-700">
+                      Umsatz nach Annahmestelle
+                    </p>
+
+                    <h3 className="mt-2 text-2xl font-black text-slate-950">
+                      Welche Annahmestelle bringt wie viel Umsatz?
+                    </h3>
+
+                    <p className="mt-2 text-sm text-slate-500">
+                      Laufender Monat · Umsatz, Teile, Lieferscheine und Durchschnittswerte.
+                    </p>
+                  </div>
+                </div>
+
+                {dashboardWirdGeladen ? (
+                  <div className="mt-5 rounded-2xl bg-white p-6 text-center text-slate-500">
+                    Annahmestellen-Umsätze werden berechnet ...
+                  </div>
+                ) : annahmestellenUmsaetze.length === 0 ? (
+                  <div className="mt-5 rounded-2xl bg-white p-6 text-center text-slate-500">
+                    Für diesen Monat gibt es noch keine Umsätze nach Annahmestelle.
+                  </div>
+                ) : (
+                  <div className="mt-6 space-y-3">
+                    {annahmestellenUmsaetze.map(
+                      (
+                        eintrag,
+                        index,
+                      ) => (
+                        <div
+                          key={eintrag.annahmestelle}
+                          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div className="flex items-start gap-4">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-sm font-black text-white">
+                                {index + 1}
+                              </div>
+
+                              <div>
+                                <h4 className="text-lg font-black text-slate-950">
+                                  {eintrag.annahmestelle}
+                                </h4>
+
+                                <p className="mt-1 text-sm text-slate-500">
+                                  {eintrag.teile} Teile · {eintrag.lieferscheine} Lieferscheine
+                                </p>
+                              </div>
+                            </div>
+
+                            <p className="text-2xl font-black tracking-tight text-emerald-700">
+                              {geldFormatieren(
+                                eintrag.umsatz,
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-xl bg-slate-50 px-4 py-3">
+                              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                                Ø Umsatz pro Teil
+                              </p>
+                              <p className="mt-1 font-black text-slate-900">
+                                {geldFormatieren(
+                                  eintrag.durchschnittProTeil,
+                                )}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-slate-50 px-4 py-3">
+                              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                                Ø Umsatz pro Lieferschein
+                              </p>
+                              <p className="mt-1 font-black text-slate-900">
+                                {geldFormatieren(
+                                  eintrag.durchschnittProLieferschein,
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
 
               <div className="grid gap-4 border-t border-slate-200 bg-slate-50 p-6 sm:grid-cols-2 lg:grid-cols-4">
 
