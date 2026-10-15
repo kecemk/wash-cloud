@@ -147,7 +147,9 @@ type AnnahmestellenUmsatz = {
   umsatz: number;
   teile: number;
   lieferscheine: number;
+  sammelscheine: number;
   durchschnittProTeil: number;
+  durchschnittProSammelschein: number;
   durchschnittProLieferschein: number;
 };
 
@@ -785,6 +787,7 @@ export default function Home() {
           umsatz: number;
           teile: number;
           lieferscheine: number;
+          sammelscheine: number;
         }
       >();
 
@@ -814,6 +817,7 @@ export default function Home() {
             umsatz: 0,
             teile: 0,
             lieferscheine: 0,
+            sammelscheine: 0,
           };
 
         bisher.umsatz += zahlUmwandeln(
@@ -831,44 +835,54 @@ export default function Home() {
         );
       }
 
-      setAnnahmestellenUmsaetze(
-        Array.from(
-          annahmestellenMap.entries(),
-        )
-          .map(
-            ([
-              annahmestelle,
-              werte,
-            ]): AnnahmestellenUmsatz => ({
-              annahmestelle,
-              umsatz: werte.umsatz,
-              teile: werte.teile,
-              lieferscheine:
-                werte.lieferscheine,
-              durchschnittProTeil:
-                werte.teile > 0
-                  ? werte.umsatz /
-                    werte.teile
-                  : 0,
-              durchschnittProLieferschein:
-                werte.lieferscheine > 0
-                  ? werte.umsatz /
-                    werte.lieferscheine
-                  : 0,
-            }),
+      function annahmestellenAuswertungSpeichern() {
+        setAnnahmestellenUmsaetze(
+          Array.from(
+            annahmestellenMap.entries(),
           )
-          .sort(
-            (a, b) =>
-              b.umsatz - a.umsatz ||
-              b.teile - a.teile ||
-              a.annahmestelle.localeCompare(
-                b.annahmestelle,
-                "de",
-              ),
-          ),
-      );
+            .map(
+              ([
+                annahmestelle,
+                werte,
+              ]): AnnahmestellenUmsatz => ({
+                annahmestelle,
+                umsatz: werte.umsatz,
+                teile: werte.teile,
+                lieferscheine:
+                  werte.lieferscheine,
+                sammelscheine:
+                  werte.sammelscheine,
+                durchschnittProTeil:
+                  werte.teile > 0
+                    ? werte.umsatz /
+                      werte.teile
+                    : 0,
+                durchschnittProSammelschein:
+                  werte.sammelscheine > 0
+                    ? werte.umsatz /
+                      werte.sammelscheine
+                    : 0,
+                durchschnittProLieferschein:
+                  werte.lieferscheine > 0
+                    ? werte.umsatz /
+                      werte.lieferscheine
+                    : 0,
+              }),
+            )
+            .sort(
+              (a, b) =>
+                b.umsatz - a.umsatz ||
+                b.teile - a.teile ||
+                a.annahmestelle.localeCompare(
+                  b.annahmestelle,
+                  "de",
+                ),
+            ),
+        );
+      }
 
       if (monatLieferscheinIds.length === 0) {
+        annahmestellenAuswertungSpeichern();
         setArtikelUmsaetze([]);
         setArtikelUmsatzOhnePreis(0);
       } else {
@@ -886,6 +900,7 @@ export default function Home() {
         if (!istAktiv) return;
 
         if (sammelscheinFehler) {
+          annahmestellenAuswertungSpeichern();
           setArtikelUmsaetze([]);
           setArtikelUmsatzOhnePreis(0);
           setArtikelUmsatzFehler(
@@ -895,6 +910,46 @@ export default function Home() {
           const geladeneSammelscheine =
             (sammelscheinDaten ?? []) as
               DatenbankSammelscheinArtikelumsatz[];
+
+          const lieferscheinZuAnnahmestelle =
+            new Map<number, string>();
+
+          for (const lieferschein of daten) {
+            if (
+              monatLieferscheinIds.includes(
+                lieferschein.id,
+              )
+            ) {
+              lieferscheinZuAnnahmestelle.set(
+                lieferschein.id,
+                annahmestellenNameErmitteln(
+                  lieferschein.annahmestellen,
+                ),
+              );
+            }
+          }
+
+          for (const sammelschein of geladeneSammelscheine) {
+            const annahmestelle =
+              lieferscheinZuAnnahmestelle.get(
+                sammelschein.lieferschein_id,
+              );
+
+            if (!annahmestelle) {
+              continue;
+            }
+
+            const werte =
+              annahmestellenMap.get(
+                annahmestelle,
+              );
+
+            if (werte) {
+              werte.sammelscheine += 1;
+            }
+          }
+
+          annahmestellenAuswertungSpeichern();
 
           const sammelscheinIds =
             geladeneSammelscheine.map(
@@ -2510,7 +2565,7 @@ export default function Home() {
                     </h3>
 
                     <p className="mt-2 text-sm text-slate-500">
-                      Laufender Monat · Umsatz, Teile, Lieferscheine und Durchschnittswerte.
+                      Laufender Monat · Umsatz, Teile, Sammelscheine, Lieferscheine und Durchschnittswerte.
                     </p>
                   </div>
                 </div>
@@ -2546,7 +2601,7 @@ export default function Home() {
                                 </h4>
 
                                 <p className="mt-1 text-sm text-slate-500">
-                                  {eintrag.teile} Teile · {eintrag.lieferscheine} Lieferscheine
+                                  {eintrag.teile} Teile · {eintrag.sammelscheine} Sammelscheine · {eintrag.lieferscheine} Lieferscheine
                                 </p>
                               </div>
                             </div>
@@ -2558,7 +2613,7 @@ export default function Home() {
                             </p>
                           </div>
 
-                          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                          <div className="mt-5 grid gap-3 sm:grid-cols-3">
                             <div className="rounded-xl bg-slate-50 px-4 py-3">
                               <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
                                 Ø Umsatz pro Teil
@@ -2566,6 +2621,17 @@ export default function Home() {
                               <p className="mt-1 font-black text-slate-900">
                                 {geldFormatieren(
                                   eintrag.durchschnittProTeil,
+                                )}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-slate-50 px-4 py-3">
+                              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                                Ø Umsatz pro Sammelschein
+                              </p>
+                              <p className="mt-1 font-black text-slate-900">
+                                {geldFormatieren(
+                                  eintrag.durchschnittProSammelschein,
                                 )}
                               </p>
                             </div>
