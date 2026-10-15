@@ -2379,51 +2379,114 @@ export default function Home() {
                 {!artikelUmsatzFehler &&
                   !dashboardWirdGeladen &&
                   artikelUmsaetze.length > 0 && (
-                    <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {artikelUmsaetze
-                        .slice(0, 9)
-                        .map(
-                          (
-                            artikel,
-                            index,
-                          ) => (
-                            <div
-                              key={artikel.artikel}
-                              className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5"
-                            >
-                              <div className="flex items-start justify-between gap-4">
-                                <div>
-                                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                                    #{index + 1}
-                                  </p>
+                    <>
+                      <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {artikelUmsaetze
+                          .slice(0, 9)
+                          .map(
+                            (
+                              artikel,
+                              index,
+                            ) => (
+                              <div
+                                key={artikel.artikel}
+                                className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5"
+                              >
+                                <div className="flex items-start justify-between gap-4">
+                                  <div>
+                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                                      #{index + 1}
+                                    </p>
 
-                                  <h4 className="mt-1 text-lg font-black text-slate-950">
-                                    {artikel.artikel}
-                                  </h4>
+                                    <h4 className="mt-1 text-lg font-black text-slate-950">
+                                      {artikel.artikel}
+                                    </h4>
+                                  </div>
+
+                                  <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
+                                    {artikel.menge} Stück
+                                  </span>
                                 </div>
 
-                                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
-                                  {artikel.menge} Stück
-                                </span>
+                                <p className="mt-5 text-2xl font-black tracking-tight text-emerald-700">
+                                  {geldFormatieren(
+                                    artikel.umsatz,
+                                  )}
+                                </p>
+
+                                <p className="mt-1 text-sm text-slate-500">
+                                  Ø{" "}
+                                  {geldFormatieren(
+                                    artikel.durchschnitt,
+                                  )}{" "}
+                                  pro Stück
+                                </p>
                               </div>
+                            ),
+                          )}
+                      </div>
 
-                              <p className="mt-5 text-2xl font-black tracking-tight text-emerald-700">
-                                {geldFormatieren(
-                                  artikel.umsatz,
-                                )}
+                      {artikelUmsaetze.length > 9 && (
+                        <div className="mt-8">
+                          <div className="flex flex-wrap items-end justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-black text-slate-950">
+                                Weitere Artikel
                               </p>
-
                               <p className="mt-1 text-sm text-slate-500">
-                                Ø{" "}
-                                {geldFormatieren(
-                                  artikel.durchschnitt,
-                                )}{" "}
-                                pro Stück
+                                Alle weiteren Artikel des laufenden Monats – ebenfalls nach Umsatz sortiert.
                               </p>
                             </div>
-                          ),
-                        )}
-                    </div>
+
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                              {artikelUmsaetze.length - 9} weitere
+                            </span>
+                          </div>
+
+                          <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                            {artikelUmsaetze
+                              .slice(9)
+                              .map(
+                                (
+                                  artikel,
+                                  index,
+                                ) => (
+                                  <div
+                                    key={artikel.artikel}
+                                    className="grid gap-3 border-b border-slate-100 px-4 py-4 last:border-b-0 sm:grid-cols-[56px_minmax(0,1fr)_110px_140px_150px] sm:items-center"
+                                  >
+                                    <p className="text-xs font-black uppercase tracking-wide text-slate-400">
+                                      #{index + 10}
+                                    </p>
+
+                                    <h4 className="font-black text-slate-950">
+                                      {artikel.artikel}
+                                    </h4>
+
+                                    <p className="text-sm font-bold text-slate-600 sm:text-right">
+                                      {artikel.menge} Stück
+                                    </p>
+
+                                    <p className="font-black text-emerald-700 sm:text-right">
+                                      {geldFormatieren(
+                                        artikel.umsatz,
+                                      )}
+                                    </p>
+
+                                    <p className="text-sm text-slate-500 sm:text-right">
+                                      Ø{" "}
+                                      {geldFormatieren(
+                                        artikel.durchschnitt,
+                                      )}{" "}
+                                      / Stück
+                                    </p>
+                                  </div>
+                                ),
+                              )}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                 {artikelUmsatzOhnePreis > 0 && (
