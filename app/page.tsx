@@ -123,6 +123,25 @@ type DatenbankRechnung = {
 };
 
 
+type DatenbankSammelscheinArtikelumsatz = {
+  id: number;
+  lieferschein_id: number;
+};
+
+type DatenbankPositionArtikelumsatz = {
+  artikel: string;
+  menge: number;
+  einzelpreis: number | string | null;
+};
+
+type ArtikelUmsatz = {
+  artikel: string;
+  menge: number;
+  umsatz: number;
+  durchschnitt: number;
+};
+
+
 
 type DashboardKennzahlen = {
 
@@ -345,6 +364,15 @@ export default function Home() {
   const [fehler, setFehler] = useState("");
 
   const [dashboardFehler, setDashboardFehler] = useState("");
+
+  const [artikelUmsaetze, setArtikelUmsaetze] =
+    useState<ArtikelUmsatz[]>([]);
+
+  const [artikelUmsatzOhnePreis, setArtikelUmsatzOhnePreis] =
+    useState(0);
+
+  const [artikelUmsatzFehler, setArtikelUmsatzFehler] =
+    useState("");
 
   const [kassenAuswahlIstOffen, setKassenAuswahlIstOffen] =
 
@@ -574,6 +602,12 @@ export default function Home() {
 
         setLetzteLieferscheine([]);
 
+        setArtikelUmsaetze([]);
+
+        setArtikelUmsatzOhnePreis(0);
+
+        setArtikelUmsatzFehler("");
+
         setDashboardWirdGeladen(false);
 
         setDashboardFehler("");
@@ -587,6 +621,8 @@ export default function Home() {
       setDashboardWirdGeladen(true);
 
       setDashboardFehler("");
+
+      setArtikelUmsatzFehler("");
 
 
 
@@ -682,6 +718,8 @@ export default function Home() {
 
       let offenerRechnungsbetrag = 0;
 
+      const monatLieferscheinIds: number[] = [];
+
 
 
       for (const lieferschein of daten) {
@@ -718,8 +756,156 @@ export default function Home() {
 
           umsatzMonat += betrag;
 
+          monatLieferscheinIds.push(lieferschein.id);
+
         }
 
+      }
+
+
+
+      if (monatLieferscheinIds.length === 0) {
+        setArtikelUmsaetze([]);
+        setArtikelUmsatzOhnePreis(0);
+      } else {
+        const {
+          data: sammelscheinDaten,
+          error: sammelscheinFehler,
+        } = await supabase
+          .from("sammelscheine")
+          .select("id, lieferschein_id")
+          .in(
+            "lieferschein_id",
+            monatLieferscheinIds,
+          );
+
+        if (!istAktiv) return;
+
+        if (sammelscheinFehler) {
+          setArtikelUmsaetze([]);
+          setArtikelUmsatzOhnePreis(0);
+          setArtikelUmsatzFehler(
+            sammelscheinFehler.message,
+          );
+        } else {
+          const geladeneSammelscheine =
+            (sammelscheinDaten ?? []) as
+              DatenbankSammelscheinArtikelumsatz[];
+
+          const sammelscheinIds =
+            geladeneSammelscheine.map(
+              (sammelschein) => sammelschein.id,
+            );
+
+          if (sammelscheinIds.length === 0) {
+            setArtikelUmsaetze([]);
+            setArtikelUmsatzOhnePreis(0);
+          } else {
+            const {
+              data: positionsDaten,
+              error: positionsFehler,
+            } = await supabase
+              .from("sammelschein_positionen")
+              .select(
+                "artikel, menge, einzelpreis",
+              )
+              .in(
+                "sammelschein_id",
+                sammelscheinIds,
+              );
+
+            if (!istAktiv) return;
+
+            if (positionsFehler) {
+              setArtikelUmsaetze([]);
+              setArtikelUmsatzOhnePreis(0);
+              setArtikelUmsatzFehler(
+                positionsFehler.message,
+              );
+            } else {
+              const positionen =
+                (positionsDaten ?? []) as
+                  DatenbankPositionArtikelumsatz[];
+
+              const artikelMap = new Map<
+                string,
+                { menge: number; umsatz: number }
+              >();
+
+              let ohnePreis = 0;
+
+              for (const position of positionen) {
+                const artikel =
+                  position.artikel.trim() ||
+                  "Ohne Bezeichnung";
+
+                const menge =
+                  Number(position.menge) || 0;
+
+                if (position.einzelpreis === null) {
+                  ohnePreis += 1;
+                  continue;
+                }
+
+                const einzelpreis =
+                  zahlUmwandeln(
+                    position.einzelpreis,
+                  );
+
+                const bisher =
+                  artikelMap.get(artikel) ?? {
+                    menge: 0,
+                    umsatz: 0,
+                  };
+
+                bisher.menge += menge;
+                bisher.umsatz +=
+                  menge * einzelpreis;
+
+                artikelMap.set(
+                  artikel,
+                  bisher,
+                );
+              }
+
+              const auswertung =
+                Array.from(
+                  artikelMap.entries(),
+                )
+                  .map(
+                    ([
+                      artikel,
+                      werte,
+                    ]): ArtikelUmsatz => ({
+                      artikel,
+                      menge: werte.menge,
+                      umsatz: werte.umsatz,
+                      durchschnitt:
+                        werte.menge > 0
+                          ? werte.umsatz /
+                            werte.menge
+                          : 0,
+                    }),
+                  )
+                  .sort(
+                    (a, b) =>
+                      b.umsatz - a.umsatz ||
+                      b.menge - a.menge ||
+                      a.artikel.localeCompare(
+                        b.artikel,
+                        "de",
+                      ),
+                  );
+
+              setArtikelUmsaetze(
+                auswertung,
+              );
+              setArtikelUmsatzOhnePreis(
+                ohnePreis,
+              );
+            }
+          }
+        }
       }
 
 
@@ -2039,6 +2225,108 @@ export default function Home() {
 
                 </Link>
 
+              </div>
+
+              <div className="border-t border-slate-200 bg-white p-6 sm:p-8">
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
+                      Umsatz nach Artikel
+                    </p>
+
+                    <h3 className="mt-2 text-2xl font-black text-slate-950">
+                      Welche Artikel bringen Umsatz?
+                    </h3>
+
+                    <p className="mt-2 text-sm text-slate-500">
+                      Laufender Monat · Stückzahl, Umsatz und durchschnittlicher Stückpreis.
+                    </p>
+                  </div>
+
+                  <Link
+                    href="/auswertung"
+                    className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-200"
+                  >
+                    Gesamte Auswertung →
+                  </Link>
+                </div>
+
+                {artikelUmsatzFehler && (
+                  <div className="mt-5 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-800">
+                    Artikelumsatz konnte nicht geladen werden: {artikelUmsatzFehler}
+                  </div>
+                )}
+
+                {!artikelUmsatzFehler &&
+                  dashboardWirdGeladen && (
+                    <div className="mt-5 rounded-2xl bg-slate-50 p-6 text-center text-slate-500">
+                      Artikelumsatz wird berechnet ...
+                    </div>
+                  )}
+
+                {!artikelUmsatzFehler &&
+                  !dashboardWirdGeladen &&
+                  artikelUmsaetze.length === 0 && (
+                    <div className="mt-5 rounded-2xl bg-slate-50 p-6 text-center text-slate-500">
+                      Für diesen Monat gibt es noch keinen Artikelumsatz mit gespeichertem Stückpreis.
+                    </div>
+                  )}
+
+                {!artikelUmsatzFehler &&
+                  !dashboardWirdGeladen &&
+                  artikelUmsaetze.length > 0 && (
+                    <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {artikelUmsaetze
+                        .slice(0, 9)
+                        .map(
+                          (
+                            artikel,
+                            index,
+                          ) => (
+                            <div
+                              key={artikel.artikel}
+                              className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5"
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                                    #{index + 1}
+                                  </p>
+
+                                  <h4 className="mt-1 text-lg font-black text-slate-950">
+                                    {artikel.artikel}
+                                  </h4>
+                                </div>
+
+                                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
+                                  {artikel.menge} Stück
+                                </span>
+                              </div>
+
+                              <p className="mt-5 text-2xl font-black tracking-tight text-emerald-700">
+                                {geldFormatieren(
+                                  artikel.umsatz,
+                                )}
+                              </p>
+
+                              <p className="mt-1 text-sm text-slate-500">
+                                Ø{" "}
+                                {geldFormatieren(
+                                  artikel.durchschnitt,
+                                )}{" "}
+                                pro Stück
+                              </p>
+                            </div>
+                          ),
+                        )}
+                    </div>
+                  )}
+
+                {artikelUmsatzOhnePreis > 0 && (
+                  <p className="mt-5 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Hinweis: {artikelUmsatzOhnePreis} ältere Position{artikelUmsatzOhnePreis === 1 ? "" : "en"} ohne gespeicherten Stückpreis {artikelUmsatzOhnePreis === 1 ? "ist" : "sind"} nicht im Artikelumsatz enthalten.
+                  </p>
+                )}
               </div>
 
 
