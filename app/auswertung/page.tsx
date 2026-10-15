@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ZugriffsSchutz from "../components/ZugriffsSchutz";
+import { useBenutzer } from "../context/BenutzerContext";
 import { supabase } from "../lib/supabase";
 
 type Annahmestelle = {
@@ -13,6 +14,7 @@ type LieferscheinZeile = {
   id: number;
   annahmestelle_id: number;
   fertiggestellt_am: string | null;
+  gesamtbetrag: number | string;
 };
 
 type SammelscheinZeile = {
@@ -50,7 +52,36 @@ function formatZahl(wert: number): string {
   return new Intl.NumberFormat("de-DE").format(wert);
 }
 
+function formatGeld(wert: number): string {
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+  }).format(wert);
+}
+
+function zahlUmwandeln(
+  wert: number | string | null | undefined,
+): number {
+  const zahl =
+    typeof wert === "number"
+      ? wert
+      : Number(String(wert ?? "0").replace(",", "."));
+
+  return Number.isFinite(zahl) ? zahl : 0;
+}
+
 export default function AuswertungPage() {
+  const { aktuellerBenutzer } = useBenutzer();
+
+  const istAdmin =
+    aktuellerBenutzer?.rolle === "admin";
+
+  const istAnnahmestelle =
+    aktuellerBenutzer?.rolle === "annahmestelle";
+
+  const darfAuswertungAnzeigen =
+    istAdmin || istAnnahmestelle;
+
   const [annahmestellen, setAnnahmestellen] =
     useState<Annahmestelle[]>([]);
 
@@ -77,6 +108,52 @@ export default function AuswertungPage() {
 
   useEffect(() => {
     async function annahmestellenLaden() {
+      if (!aktuellerBenutzer) {
+        setAnnahmestellen([]);
+        return;
+      }
+
+      if (istAnnahmestelle) {
+        const eigeneId =
+          aktuellerBenutzer.annahmestelleId;
+
+        if (eigeneId === null) {
+          setAnnahmestellen([]);
+          setAnnahmestelleId("");
+          setFehler(
+            "Diesem Benutzer ist keine Annahmestelle zugeordnet.",
+          );
+          return;
+        }
+
+        setAnnahmestelleId(String(eigeneId));
+
+        const { data, error } = await supabase
+          .from("annahmestellen")
+          .select("id, name")
+          .eq("id", eigeneId)
+          .maybeSingle();
+
+        if (error) {
+          setAnnahmestellen([]);
+          setFehler(
+            `Die eigene Annahmestelle konnte nicht geladen werden: ${error.message}`,
+          );
+          return;
+        }
+
+        setAnnahmestellen(
+          data ? [data as Annahmestelle] : [],
+        );
+        return;
+      }
+
+      if (!istAdmin) {
+        setAnnahmestellen([]);
+        setAnnahmestelleId("");
+        return;
+      }
+
       const { data, error } = await supabase
         .from("annahmestellen")
         .select("id, name")
@@ -96,11 +173,38 @@ export default function AuswertungPage() {
     }
 
     void annahmestellenLaden();
-  }, []);
+  }, [
+    aktuellerBenutzer,
+    istAdmin,
+    istAnnahmestelle,
+  ]);
 
   useEffect(() => {
     async function auswertungLaden() {
+      if (
+        !aktuellerBenutzer ||
+        !darfAuswertungAnzeigen
+      ) {
+        setLieferscheine([]);
+        setSammelscheine([]);
+        setPositionen([]);
+        return;
+      }
+
       if (!vonDatum || !bisDatum) {
+        return;
+      }
+
+      if (
+        istAnnahmestelle &&
+        aktuellerBenutzer.annahmestelleId === null
+      ) {
+        setLieferscheine([]);
+        setSammelscheine([]);
+        setPositionen([]);
+        setFehler(
+          "Diesem Benutzer ist keine Annahmestelle zugeordnet.",
+        );
         return;
       }
 
@@ -128,7 +232,7 @@ export default function AuswertungPage() {
         let lieferscheinAbfrage = supabase
           .from("lieferscheine")
           .select(
-            "id, annahmestelle_id, fertiggestellt_am",
+            "id, annahmestelle_id, fertiggestellt_am, gesamtbetrag",
           )
           .gte("fertiggestellt_am", vonIso)
           .lt(
@@ -139,7 +243,16 @@ export default function AuswertungPage() {
             ascending: false,
           });
 
-        if (annahmestelleId) {
+        if (istAnnahmestelle) {
+          lieferscheinAbfrage =
+            lieferscheinAbfrage.eq(
+              "annahmestelle_id",
+              aktuellerBenutzer.annahmestelleId as number,
+            );
+        } else if (
+          istAdmin &&
+          annahmestelleId
+        ) {
           lieferscheinAbfrage =
             lieferscheinAbfrage.eq(
               "annahmestelle_id",
@@ -259,6 +372,10 @@ export default function AuswertungPage() {
 
     void auswertungLaden();
   }, [
+    aktuellerBenutzer,
+    darfAuswertungAnzeigen,
+    istAdmin,
+    istAnnahmestelle,
     vonDatum,
     bisDatum,
     annahmestelleId,
@@ -272,6 +389,19 @@ export default function AuswertungPage() {
         0,
       ),
     [positionen],
+  );
+
+  const gesamtUmsatz = useMemo(
+    () =>
+      lieferscheine.reduce(
+        (summe, lieferschein) =>
+          summe +
+          zahlUmwandeln(
+            lieferschein.gesamtbetrag,
+          ),
+        0,
+      ),
+    [lieferscheine],
   );
 
   const artikelAuswertung =
@@ -319,9 +449,27 @@ export default function AuswertungPage() {
         )?.name ?? "Annahmestelle"
       : "Alle Annahmestellen";
 
+  if (
+    aktuellerBenutzer &&
+    !darfAuswertungAnzeigen
+  ) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
+        <div className="mx-auto max-w-2xl rounded-2xl bg-white p-8 text-center shadow">
+          <h1 className="text-2xl font-black text-slate-950">
+            Auswertung gesperrt
+          </h1>
+          <p className="mt-3 text-slate-600">
+            Diese Auswertung ist nur für Administratoren und Annahmestellen freigegeben.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <ZugriffsSchutz
-      berechtigung="dashboard_anzeigen"
+      berechtigung="lieferscheine_anzeigen"
       titel="Auswertung gesperrt"
       beschreibung="Du hast keine Berechtigung, die Auswertung zu öffnen."
       zurueckLink="/"
@@ -334,17 +482,27 @@ export default function AuswertungPage() {
               Washly
             </p>
             <h1 className="mt-1 text-2xl font-bold sm:text-3xl">
-              Auswertung
+              {istAnnahmestelle
+                ? "Meine Auswertung"
+                : "Auswertung"}
             </h1>
             <p className="mt-2 text-sm text-slate-300">
-              Bearbeitete Teile nach Zeitraum und Annahmestelle.
+              {istAnnahmestelle
+                ? "Nur die Daten deiner eigenen Annahmestelle."
+                : "Bearbeitete Teile nach Zeitraum und Annahmestelle."}
             </p>
           </div>
         </header>
 
         <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           <div className="rounded-2xl bg-white p-4 shadow sm:p-6">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div
+              className={`grid gap-4 ${
+                istAdmin
+                  ? "md:grid-cols-3"
+                  : "md:grid-cols-2"
+              }`}
+            >
               <label>
                 <span className="text-sm font-bold text-slate-700">
                   Von
@@ -377,6 +535,7 @@ export default function AuswertungPage() {
                 />
               </label>
 
+              {istAdmin && (
               <label>
                 <span className="text-sm font-bold text-slate-700">
                   Annahmestelle
@@ -408,11 +567,22 @@ export default function AuswertungPage() {
                   )}
                 </select>
               </label>
+              )}
             </div>
 
-            <div className="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
-              Angezeigt:{" "}
-              <span className="font-bold text-slate-950">
+            <div
+              className={`mt-4 rounded-xl px-4 py-3 text-sm ${
+                istAnnahmestelle
+                  ? "border border-blue-200 bg-blue-50 text-blue-900"
+                  : "bg-slate-100 text-slate-700"
+              }`}
+            >
+              {istAnnahmestelle && (
+                <span className="mr-2 font-bold">
+                  🔒 Eigene Daten:
+                </span>
+              )}
+              <span className="font-bold">
                 {ausgewaehlteAnnahmestelle}
               </span>
               {" · "}
@@ -426,7 +596,7 @@ export default function AuswertungPage() {
             </div>
           )}
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-2xl bg-white p-5 shadow">
               <p className="text-sm font-semibold text-slate-500">
                 Gesamt bearbeitete Teile
@@ -462,6 +632,19 @@ export default function AuswertungPage() {
                   ? "…"
                   : formatZahl(
                       sammelscheine.length,
+                    )}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-5 shadow">
+              <p className="text-sm font-semibold text-emerald-700">
+                Umsatz
+              </p>
+              <p className="mt-2 text-3xl font-black text-emerald-950">
+                {laedt
+                  ? "…"
+                  : formatGeld(
+                      gesamtUmsatz,
                     )}
               </p>
             </div>
